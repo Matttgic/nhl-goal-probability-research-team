@@ -1,0 +1,58 @@
+name: Historical NHL anytime-goal cached postprocess
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/odds-api-postprocess-trigger
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  postprocess:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install project
+        run: uv sync
+
+      - name: Download frozen V2 artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: real-nhl-v2-output
+          path: cached/v2
+          repository: ${{ github.repository }}
+          run-id: 36753181078
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download already-paid Odds API raw artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: historical-anytime-goal-oddsapi-output
+          path: cached/odds
+          repository: ${{ github.repository }}
+          run-id: 36763766175
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run offline player-name matching and economic backtest
+        run: uv run python scripts/postprocess_anytime_goal_backtest_oddsapi.py
+
+      - name: Upload corrected backtest artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: historical-anytime-goal-oddsapi-postprocess-output
+          path: |
+            reports/historical_anytime_goal_oddsapi_postprocess.md
+            workspace/historical_anytime_goal_oddsapi_postprocess/**
+          if-no-files-found: warn

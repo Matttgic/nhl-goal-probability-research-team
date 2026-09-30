@@ -21,28 +21,15 @@ from scripts.historical_anytime_goal_backtest_oddsapi import (
 )
 
 PRED_PATH = Path(os.getenv("WF_PRED_PATH", "cached/walkforward/workspace/real_nhl_walkforward/walkforward_predictions_sampled_games.csv"))
-OUT = Path("workspace/walkforward_economic_us")
-REPORT = Path("reports/walkforward_economic_us.md")
+OUT = Path(os.getenv("WF_ECON_OUT", "workspace/walkforward_economic_us"))
+REPORT = Path(os.getenv("WF_ECON_REPORT", "reports/walkforward_economic_us.md"))
 OUT.mkdir(parents=True, exist_ok=True)
 REPORT.parent.mkdir(parents=True, exist_ok=True)
 
 EV_THRESHOLD = 0.05
 MAX_ODDS = 8.0
 GAMES_PER_FOLD = int(os.getenv("WF_ODDS_GAMES_PER_FOLD", "40"))
-
-TEAM_NAMES = {
-    "ANA": "Anaheim Ducks", "BOS": "Boston Bruins", "BUF": "Buffalo Sabres",
-    "CAR": "Carolina Hurricanes", "CBJ": "Columbus Blue Jackets", "CGY": "Calgary Flames",
-    "CHI": "Chicago Blackhawks", "COL": "Colorado Avalanche", "DAL": "Dallas Stars",
-    "DET": "Detroit Red Wings", "EDM": "Edmonton Oilers", "FLA": "Florida Panthers",
-    "LAK": "Los Angeles Kings", "MIN": "Minnesota Wild", "MTL": "Montreal Canadiens",
-    "NJD": "New Jersey Devils", "NSH": "Nashville Predators", "NYI": "New York Islanders",
-    "NYR": "New York Rangers", "OTT": "Ottawa Senators", "PHI": "Philadelphia Flyers",
-    "PIT": "Pittsburgh Penguins", "SEA": "Seattle Kraken", "SJS": "San Jose Sharks",
-    "STL": "St. Louis Blues", "TBL": "Tampa Bay Lightning", "TOR": "Toronto Maple Leafs",
-    "UTA": "Utah Mammoth", "VAN": "Vancouver Canucks", "VGK": "Vegas Golden Knights",
-    "WPG": "Winnipeg Jets", "WSH": "Washington Capitals",
-}
+FOLD_FILTER = {x.strip() for x in os.getenv("WF_FOLDS", "").split(",") if x.strip()}
 
 
 def norm(s: str | None) -> str:
@@ -66,6 +53,8 @@ def select_games(pred: pd.DataFrame) -> pd.DataFrame:
             idx = np.unique(np.linspace(0, len(games) - 1, GAMES_PER_FOLD, dtype=int))
             games = games.iloc[idx]
         selected.append(games.assign(fold=fold))
+    if not selected:
+        raise RuntimeError("No folds available after filtering")
     return pd.concat(selected, ignore_index=True)
 
 
@@ -148,9 +137,14 @@ def main() -> None:
     if not key:
         raise RuntimeError("ODDS_API_KEY is required")
     pred = pd.read_csv(PRED_PATH)
+    if FOLD_FILTER:
+        pred = pred[pred.fold.astype(str).isin(FOLD_FILTER)].copy()
+        missing = sorted(FOLD_FILTER - set(pred.fold.astype(str).unique()))
+        if missing:
+            raise RuntimeError(f"Requested folds not found in predictions: {missing}")
     selected = select_games(pred)
     meta = attach_game_meta(pred, selected)
-    print(f"walk-forward economic sample games={len(meta)} folds={meta.fold.nunique()}")
+    print(f"walk-forward economic sample games={len(meta)} folds={meta.fold.nunique()} filter={sorted(FOLD_FILTER) if FOLD_FILTER else 'all'}")
 
     client = OddsAPIClient(key)
     raw_parts = []
@@ -212,6 +206,7 @@ def main() -> None:
     })
     summary = {
         "primary_rule": {"ev_min": EV_THRESHOLD, "max_decimal_odds": MAX_ODDS},
+        "fold_filter": sorted(FOLD_FILTER),
         "sample_games_requested": int(len(meta)), "priced_games": int(merged.game_id.nunique()),
         "joined_rows": int(len(merged)), "ambiguous_test_keys": len(ambiguous_test),
         "ambiguous_odds_keys": ambiguous_odds, "api_calls": client.calls,

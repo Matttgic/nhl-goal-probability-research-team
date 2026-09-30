@@ -1,0 +1,49 @@
+name: Historical NHL anytime-goal backtest (BDL)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  historical-anytime-goal:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    env:
+      PYTHONPATH: .
+      BALLDONTLIE_API_KEY: ${{ secrets.BALLDONTLIE_API_KEY }}
+      # Safe for the 48-hour GOAT trial's documented 5 req/min limit.
+      # Lower this only when the key is on a higher-rate paid tier.
+      BDL_MIN_INTERVAL_SECONDS: "12.3"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install project
+        run: uv sync
+
+      - name: Validate BALLDONTLIE secret
+        run: |
+          if [ -z "$BALLDONTLIE_API_KEY" ]; then
+            echo "::error::Missing GitHub Actions secret BALLDONTLIE_API_KEY"
+            echo "Add the key as a repository Actions secret. Never commit it to the repo."
+            exit 2
+          fi
+
+      - name: Run frozen V2 vs historical opening anytime-goal prices
+        run: uv run python scripts/historical_anytime_goal_backtest_bdl.py
+
+      - name: Upload historical odds backtest artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: historical-anytime-goal-bdl-output
+          path: |
+            reports/historical_anytime_goal_bdl.md
+            workspace/historical_anytime_goal_bdl/**
+          if-no-files-found: warn

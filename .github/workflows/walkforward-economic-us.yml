@@ -1,0 +1,55 @@
+name: Walk-forward US historical economic validation
+
+on:
+  workflow_run:
+    workflows:
+      - Real NHL V2 two-season walk-forward
+    types:
+      - completed
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  economic:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    env:
+      PYTHONPATH: .
+      ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+      ODDS_REGIONS: "us"
+      ODDS_CREDIT_RESERVE: "12000"
+      WF_ODDS_GAMES_PER_FOLD: "40"
+      WF_PRED_PATH: "cached/walkforward/workspace/real_nhl_walkforward/walkforward_predictions_sampled_games.csv"
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - name: Install project
+        run: uv sync
+      - name: Download walk-forward predictions
+        uses: actions/download-artifact@v4
+        with:
+          name: real-nhl-walkforward-output
+          path: cached/walkforward
+          repository: Matttgic/nhl-goal-probability-research-team
+          run-id: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.id || '36771758341' }}
+          github-token: ${{ github.token }}
+      - name: Run fixed-rule economic walk-forward
+        run: uv run python scripts/walkforward_historical_economic_us.py
+      - name: Upload aggregate economic validation only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: walkforward-economic-us-output
+          path: |
+            reports/walkforward_economic_us.md
+            workspace/walkforward_economic_us/metrics.json
+            workspace/walkforward_economic_us/fold_economic_metrics.csv
+            workspace/walkforward_economic_us/errors.json
+          if-no-files-found: warn

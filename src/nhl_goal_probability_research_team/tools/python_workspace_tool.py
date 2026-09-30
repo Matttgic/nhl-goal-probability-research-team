@@ -43,7 +43,9 @@ class PythonWorkspaceTool(BaseTool):
     description: str = (
         "Write and execute Python 3 code for data engineering, statistics, machine learning, "
         "calibration and backtesting. Use it to test claims with real computation instead of "
-        "only describing code. Files are persisted under ./workspace for later agents."
+        "only describing code. The script already runs with ./workspace as its current directory. "
+        "Write output files with relative names such as predictions.csv or use the WORKSPACE_DIR "
+        "environment variable. Do NOT assume that an absolute /workspace directory exists."
     )
     args_schema: Type[BaseModel] = PythonWorkspaceInput
 
@@ -52,10 +54,19 @@ class PythonWorkspaceTool(BaseTool):
         if not safe_name.endswith(".py"):
             safe_name += ".py"
 
-        root = Path.cwd() / "workspace"
+        root = (Path.cwd() / "workspace").resolve()
         root.mkdir(parents=True, exist_ok=True)
+
+        # Free-model agents sometimes hard-code the Docker-style /workspace path.
+        # GitHub-hosted runners do not expose that root directory, so translate only
+        # literal /workspace paths into this tool's real isolated workspace.
+        root_str = root.as_posix()
+        normalized_code = code.replace("'/workspace", f"'{root_str}").replace(
+            '"/workspace', f'"{root_str}'
+        )
+
         script = root / safe_name
-        script.write_text(code, encoding="utf-8")
+        script.write_text(normalized_code, encoding="utf-8")
 
         child_env = {
             "PATH": os.environ.get("PATH", ""),
@@ -65,6 +76,7 @@ class PythonWorkspaceTool(BaseTool):
             "PYTHONUNBUFFERED": "1",
             "PYTHONPATH": os.environ.get("PYTHONPATH", ""),
             "TMPDIR": os.environ.get("TMPDIR", tempfile.gettempdir()),
+            "WORKSPACE_DIR": root_str,
         }
 
         try:
@@ -85,6 +97,7 @@ class PythonWorkspaceTool(BaseTool):
 
         return (
             f"exit_code={result.returncode}\n"
+            f"workspace_root={root}\n"
             f"script={script}\n"
             f"--- stdout ---\n{result.stdout[-12000:]}\n"
             f"--- stderr ---\n{result.stderr[-12000:]}"

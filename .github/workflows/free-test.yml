@@ -1,0 +1,57 @@
+name: Free multi-agent test
+
+on:
+  workflow_dispatch:
+    inputs:
+      mission:
+        description: Lightweight mission for validating collaboration
+        required: false
+        default: Research and verify a small set of accessible NHL historical odds and player-stat sources. Challenge weak claims and produce an evidence-first next-step plan. Do not attempt a full production model in this free smoke test.
+
+permissions:
+  contents: read
+
+jobs:
+  free-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      MISSION: ${{ inputs.mission }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      EXA_API_KEY: ${{ secrets.EXA_API_KEY }}
+      RESEARCHER_MODEL: openrouter/openrouter/free
+      DATA_ENGINEER_MODEL: openrouter/openrouter/free
+      ML_SCIENTIST_MODEL: openrouter/openrouter/free
+      CRITIC_MODEL: openrouter/openrouter/free
+      BACKTESTER_MODEL: openrouter/openrouter/free
+      DEVELOPER_MODEL: openrouter/openrouter/free
+      SYNTHESIZER_MODEL: openrouter/openrouter/free
+      MANAGER_MODEL: openrouter/openrouter/free
+      CHEAP_TEST: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install project
+        run: uv sync
+
+      - name: Validate required free-tier secrets
+        run: |
+          test -n "$OPENROUTER_API_KEY" || (echo "Missing OPENROUTER_API_KEY secret" && exit 1)
+          test -n "$EXA_API_KEY" || (echo "Missing EXA_API_KEY secret" && exit 1)
+
+      - name: Run free collaboration test
+        run: uv run run_crew
+
+      - name: Upload research artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nhl-free-test-output
+          path: |
+            reports/**
+            workspace/**
+          if-no-files-found: warn

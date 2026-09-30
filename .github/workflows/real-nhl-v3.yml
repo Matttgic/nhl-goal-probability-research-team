@@ -1,0 +1,39 @@
+name: Real NHL player-goal V3
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/real-nhl-v3-trigger
+
+permissions:
+  contents: read
+
+jobs:
+  real-nhl-v3:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install project
+        run: uv sync
+
+      - name: Run NHL V3 feature and model comparison
+        run: uv run python scripts/real_nhl_player_goal_v3.py
+
+      - name: Upload NHL V3 artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: real-nhl-v3-output
+          path: |
+            reports/real_nhl_v3.md
+            workspace/real_nhl_v3/**
+          if-no-files-found: warn

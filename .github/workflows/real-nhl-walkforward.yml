@@ -1,0 +1,42 @@
+name: Real NHL V2 two-season walk-forward
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/real-nhl-walkforward-trigger
+
+permissions:
+  contents: read
+
+jobs:
+  walkforward:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    env:
+      PYTHONPATH: .
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install project
+        run: uv sync
+
+      - name: Run two-season temporal walk-forward
+        run: uv run python scripts/real_nhl_player_goal_walkforward.py
+
+      - name: Upload walk-forward artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: real-nhl-walkforward-output
+          path: |
+            reports/real_nhl_walkforward.md
+            workspace/real_nhl_walkforward/**
+          if-no-files-found: warn

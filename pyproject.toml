@@ -1,0 +1,36 @@
+[project]
+name = "nhl_goal_probability_research_team"
+version = "0.2.0"
+description = "Evidence-first multi-agent NHL probability research crew using CrewAI"
+authors = [{ name = "CrewAI project" }]
+requires-python = ">=3.10,<3.14"
+dependencies = [
+    "crewai[file-processing,litellm,tools]>=1.15.22,<2.0.0",
+    "exa-py",
+    "pydantic>=2.0",
+    "pandas>=2.2",
+    "numpy>=1.26",
+    "scikit-learn>=1.5",
+    "xgboost>=2.1",
+    "lightgbm>=4.5",
+    "matplotlib>=3.9",
+    "requests>=2.32",
+    "pyyaml>=6.0",
+]
+
+[project.scripts]
+nhl_goal_probability_research_team = "nhl_goal_probability_research_team.main:run"
+run_crew = "nhl_goal_probability_research_team.main:run"
+train = "nhl_goal_probability_research_team.main:train"
+replay = "nhl_goal_probability_research_team.main:replay"
+test = "nhl_goal_probability_research_team.main:test"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.crewai]
+type = "crew"
+
+[tool.uv]
+override-dependencies = ["litellm<=1.82.6"]

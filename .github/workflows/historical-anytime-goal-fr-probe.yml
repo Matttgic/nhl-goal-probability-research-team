@@ -1,0 +1,52 @@
+name: Historical NHL anytime-goal FR probe
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/odds-api-fr-probe-trigger
+
+permissions:
+  contents: read
+
+jobs:
+  fr-probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      PYTHONPATH: .
+      ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+      ODDS_REGIONS: "fr"
+      ODDS_PRIMARY_MINUTES_BEFORE: "60"
+      ODDS_CLOSE_MINUTES_BEFORE: "10"
+      ODDS_MAX_TEST_GAMES: "5"
+      ODDS_CREDIT_RESERVE: "12000"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install project
+        run: uv sync
+
+      - name: Validate The Odds API secret
+        run: |
+          test -n "$ODDS_API_KEY" || (echo "::error::Missing ODDS_API_KEY" && exit 2)
+
+      - name: Probe French historical anytime-goal coverage
+        run: uv run python scripts/historical_anytime_goal_backtest_oddsapi.py
+
+      - name: Upload FR probe artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: historical-anytime-goal-fr-probe-output
+          path: |
+            reports/historical_anytime_goal_oddsapi.md
+            workspace/historical_anytime_goal_oddsapi/**
+          if-no-files-found: warn

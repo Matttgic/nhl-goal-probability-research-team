@@ -2,6 +2,8 @@ name: Live US NHL anytime-goal picks to Telegram
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: "0 19-23,0-10 * * *"
   push:
     branches:
       - main
@@ -20,8 +22,8 @@ jobs:
       ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
       TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-      LIVE_PICK_WINDOW_MINUTES: "180"
-      LIVE_PICK_MIN_LEAD_MINUTES: "15"
+      LIVE_PICK_WINDOW_MINUTES: "105"
+      LIVE_PICK_MIN_LEAD_MINUTES: "45"
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6

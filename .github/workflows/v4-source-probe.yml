@@ -1,0 +1,35 @@
+name: NHL V4 source probe
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/v4-source-probe-trigger
+
+permissions:
+  contents: read
+
+jobs:
+  source-probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - name: Install project
+        run: uv sync
+      - name: Probe public NHL and MoneyPuck sources
+        run: uv run python scripts/source_probe_v4.py
+      - name: Upload probe artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nhl-v4-source-probe
+          path: |
+            reports/v4_source_probe.md
+            workspace/v4_source_probe/**
+          if-no-files-found: warn

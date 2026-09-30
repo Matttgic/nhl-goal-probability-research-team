@@ -1,0 +1,82 @@
+protocol_version: 1
+frozen_at: "2026-09-30"
+objective: "Estimate pregame NHL player probability of scoring at least one goal and test whether independent probabilities identify positive-EV anytime-goal prices."
+
+primary_model:
+  name: "V2 logistic"
+  model_family: "logistic_regression"
+  C: 0.7
+  max_iter: 2500
+  leakage_rule: "All rolling player/team performance variables are shifted by at least one game before the target game."
+  feature_source: "Public NHL boxscores only"
+
+probability_validation:
+  split_method: "expanding-window temporal walk-forward"
+  folds:
+    - label: "2025-12"
+      train_end_exclusive: "2025-12-01"
+      test_end_exclusive: "2026-01-01"
+    - label: "2026-01"
+      train_end_exclusive: "2026-01-01"
+      test_end_exclusive: "2026-02-01"
+    - label: "2026-02"
+      train_end_exclusive: "2026-02-01"
+      test_end_exclusive: "2026-03-01"
+    - label: "2026-03"
+      train_end_exclusive: "2026-03-01"
+      test_end_exclusive: "2026-04-01"
+    - label: "2026-04"
+      train_end_exclusive: "2026-04-01"
+      test_end_exclusive: "2026-04-17"
+  primary_metrics:
+    - brier
+    - log_loss
+  secondary_metrics:
+    - roc_auc
+  baseline: "constant training-period scoring rate"
+
+economic_validation:
+  market: "player_goal_scorer_anytime"
+  entry_minutes_before: 60
+  stake_units: 1.0
+  selection_rule:
+    minimum_model_ev: 0.05
+    maximum_decimal_odds: 8.0
+  primary_metrics:
+    - net_units
+    - roi
+    - max_drawdown_units
+    - cluster_bootstrap_roi_ci95
+  diagnostic_metrics:
+    - hit_rate
+    - average_odds
+    - clv
+  diagnostic_ev_thresholds: [0.0, 0.03, 0.05, 0.08, 0.10, 0.15, 0.20]
+  p_hacking_guardrail: "Only 5% EV is the primary rule. Diagnostic thresholds must not be promoted because of observed test results without a new independent future validation sample."
+
+market_scope:
+  historical_us:
+    status: "research_only"
+    note: "US historical player-prop prices can test statistical stability but do not prove French-market profitability."
+  historical_fr:
+    status: "unavailable_in_tested_sample"
+    note: "The Odds API returned no NHL anytime-goal prices for region fr on the tested historical games."
+  live_fr:
+    status: "monitored"
+    note: "Daily coverage probe checks all upcoming NHL games without logging raw prices."
+
+matching:
+  player_name_rule: "Within the same game, normalized first initial plus surname. Exclude ambiguous collisions; never guess."
+
+reporting:
+  prohibit:
+    - "Claiming profitability from an interval that includes zero"
+    - "Selecting an EV threshold after seeing the same test set and presenting it as pre-specified"
+    - "Using postgame lineup, goalie, injury, xG, PP, or shift information as a pregame feature without a timestamp-safe lag"
+    - "Inventing or substituting fixed bookmaker odds"
+  require:
+    - "Exact sample sizes"
+    - "Temporal boundaries"
+    - "Coverage/missingness audit"
+    - "Uncertainty interval for economic ROI"
+    - "Separate model-vs-market probability scoring when market prices are available"

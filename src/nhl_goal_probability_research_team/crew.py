@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 from crewai import Agent, Crew, LLM, Process, Task
 from crewai.project import CrewBase, agent, crew, task
@@ -16,6 +17,19 @@ def _truthy(value: str | None) -> bool:
     return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _cheap_test() -> bool:
+    return _truthy(os.getenv("CHEAP_TEST"))
+
+
+def _project_file_reader() -> FileReadTool:
+    """Allow reads only inside the checked-out repository.
+
+    CrewAI's FileReadTool otherwise chooses its own allowed base directory, which
+    can reject legitimate paths such as ./workspace on GitHub Actions runners.
+    """
+    return FileReadTool(base_dir=str(Path.cwd()))
+
+
 def model_from_env(name: str, fallback: str = FREE_MODEL) -> LLM:
     """Create an LLM from an environment variable.
 
@@ -27,13 +41,13 @@ def model_from_env(name: str, fallback: str = FREE_MODEL) -> LLM:
 
 
 def worker_max_iter() -> int:
-    if _truthy(os.getenv("CHEAP_TEST")):
+    if _cheap_test():
         return 3
     return int(os.getenv("WORKER_MAX_ITER", "20"))
 
 
 def manager_max_iter() -> int:
-    if _truthy(os.getenv("CHEAP_TEST")):
+    if _cheap_test():
         return 6
     return int(os.getenv("MANAGER_MAX_ITER", "35"))
 
@@ -57,7 +71,7 @@ class NhlGoalProbabilityResearchTeamCrew:
     def sports_data_engineer(self) -> Agent:
         return Agent(
             config=self.agents_config["sports_data_engineer"],
-            tools=[FileReadTool(), ExaSearchTool(), PythonWorkspaceTool()],
+            tools=[_project_file_reader(), ExaSearchTool(), PythonWorkspaceTool()],
             inject_date=True,
             allow_delegation=False,
             max_iter=worker_max_iter(),
@@ -68,7 +82,7 @@ class NhlGoalProbabilityResearchTeamCrew:
     def sports_betting_ml_engineer(self) -> Agent:
         return Agent(
             config=self.agents_config["sports_betting_ml_engineer"],
-            tools=[FileReadTool(), ArxivPaperTool(), PythonWorkspaceTool()],
+            tools=[_project_file_reader(), ArxivPaperTool(), PythonWorkspaceTool()],
             inject_date=True,
             allow_delegation=False,
             max_iter=worker_max_iter(),
@@ -77,9 +91,14 @@ class NhlGoalProbabilityResearchTeamCrew:
 
     @agent
     def ml_methodology_critic_and_bias_detective(self) -> Agent:
+        tools = [ExaSearchTool(), ArxivPaperTool()] if _cheap_test() else [
+            ExaSearchTool(),
+            ArxivPaperTool(),
+            _project_file_reader(),
+        ]
         return Agent(
             config=self.agents_config["ml_methodology_critic_and_bias_detective"],
-            tools=[ExaSearchTool(), ArxivPaperTool(), FileReadTool()],
+            tools=tools,
             inject_date=True,
             allow_delegation=False,
             max_iter=worker_max_iter(),
@@ -88,9 +107,17 @@ class NhlGoalProbabilityResearchTeamCrew:
 
     @agent
     def quantitative_backtesting_specialist(self) -> Agent:
+        # The free router is intentionally kept tool-free here. If the critic does not
+        # PASS the experiment, the backtester should only report that validation is
+        # blocked. Full runs retain file/Python tools for real walk-forward testing.
+        tools = [] if _cheap_test() else [
+            _project_file_reader(),
+            ArxivPaperTool(),
+            PythonWorkspaceTool(),
+        ]
         return Agent(
             config=self.agents_config["quantitative_backtesting_specialist"],
-            tools=[FileReadTool(), ArxivPaperTool(), PythonWorkspaceTool()],
+            tools=tools,
             inject_date=True,
             allow_delegation=False,
             max_iter=worker_max_iter(),
@@ -99,9 +126,10 @@ class NhlGoalProbabilityResearchTeamCrew:
 
     @agent
     def ml_platform_developer(self) -> Agent:
+        tools = [] if _cheap_test() else [_project_file_reader()]
         return Agent(
             config=self.agents_config["ml_platform_developer"],
-            tools=[FileReadTool()],
+            tools=tools,
             inject_date=True,
             allow_delegation=False,
             max_iter=worker_max_iter(),
@@ -110,9 +138,10 @@ class NhlGoalProbabilityResearchTeamCrew:
 
     @agent
     def evidence_synthesizer(self) -> Agent:
+        tools = [] if _cheap_test() else [_project_file_reader(), ExaSearchTool()]
         return Agent(
             config=self.agents_config["evidence_synthesizer"],
-            tools=[FileReadTool(), ExaSearchTool()],
+            tools=tools,
             inject_date=True,
             allow_delegation=False,
             max_iter=worker_max_iter(),
@@ -167,12 +196,24 @@ class NhlGoalProbabilityResearchTeamCrew:
             self.evidence_synthesizer(),
         ]
 
-        cheap_test = _truthy(os.getenv("CHEAP_TEST"))
+        if _cheap_test():
+            # OpenRouter's free router can choose models with inconsistent native
+            # tool-calling behavior. Sequential smoke mode still passes every prior
+            # task's evidence through explicit context while avoiding manager/delegation
+            # tool calls. Production mode below remains truly hierarchical.
+            return Crew(
+                agents=workers,
+                tasks=self.tasks,
+                process=Process.sequential,
+                planning=False,
+                verbose=True,
+            )
+
         return Crew(
             agents=workers,
             tasks=self.tasks,
             manager_agent=self.manager(),
             process=Process.hierarchical,
-            planning=not cheap_test,
+            planning=True,
             verbose=True,
         )

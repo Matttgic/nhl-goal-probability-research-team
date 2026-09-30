@@ -1,0 +1,54 @@
+name: Run NHL multi-agent crew
+
+on:
+  workflow_dispatch:
+    inputs:
+      mission:
+        description: Mission for the AI crew
+        required: false
+        default: Find and verify historical NHL odds/player data and build an evidence-first goal probability research prototype.
+
+permissions:
+  contents: read
+
+jobs:
+  research:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install project
+        run: uv sync
+
+      - name: Run crew
+        env:
+          MISSION: ${{ inputs.mission }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          EXA_API_KEY: ${{ secrets.EXA_API_KEY }}
+          RESEARCHER_MODEL: ${{ vars.RESEARCHER_MODEL }}
+          DATA_ENGINEER_MODEL: ${{ vars.DATA_ENGINEER_MODEL }}
+          ML_SCIENTIST_MODEL: ${{ vars.ML_SCIENTIST_MODEL }}
+          CRITIC_MODEL: ${{ vars.CRITIC_MODEL }}
+          BACKTESTER_MODEL: ${{ vars.BACKTESTER_MODEL }}
+          DEVELOPER_MODEL: ${{ vars.DEVELOPER_MODEL }}
+          SYNTHESIZER_MODEL: ${{ vars.SYNTHESIZER_MODEL }}
+          MANAGER_MODEL: ${{ vars.MANAGER_MODEL }}
+        run: uv run run_crew
+
+      - name: Upload research artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nhl-crew-output
+          path: |
+            reports/**
+            workspace/**
+          if-no-files-found: warn

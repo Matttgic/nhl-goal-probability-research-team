@@ -1,0 +1,139 @@
+research_nhl_data_sources:
+  description: |-
+    Mission: {mission}
+
+    Research and verify accessible sources for historical NHL odds and player statistics.
+    Prioritize official documentation and reproducible access. For every candidate source,
+    record URL, data fields, seasons/depth, price, rate limits, update frequency, licensing/
+    Terms-of-Service constraints, and whether historical player-prop odds are actually present.
+
+    Do not confuse game moneyline/total odds with player anytime-goal-scorer prices.
+    Do not claim scraping is permitted merely because a page is public. Flag uncertainty.
+  expected_output: |-
+    Markdown comparison table plus a recommended acquisition plan, with source URLs and a
+    separate list of unverified/blocked sources.
+  agent: sports_data_intelligence_researcher
+  output_file: reports/01_data_sources.md
+
+engineer_nhl_datasets:
+  description: |-
+    Using only sources verified in the research task, build a reproducible data pipeline.
+    Use the Python ML Workspace to EXECUTE representative ingestion and validation code.
+    Save scripts/data samples under workspace/. If credentials or paid data are missing,
+    create a clearly labelled fixture/synthetic smoke-test dataset only to validate the
+    pipeline mechanics; never present synthetic results as real evidence.
+
+    Validate timestamps, player/game identifiers, duplicate rows, nulls and join cardinality.
+    Every feature row must contain only information that existed before puck drop.
+  expected_output: |-
+    Executed pipeline evidence: script path(s), stdout/validation results, schema, row counts,
+    data-quality issues and exact blockers preventing a full historical dataset if any.
+  agent: sports_data_engineer
+  context:
+    - research_nhl_data_sources
+  output_file: reports/02_data_engineering.md
+
+train_goal_probability_models:
+  description: |-
+    Build and EXECUTE probabilistic models for whether a player scores at least one goal.
+    Use the Python ML Workspace. Start with a transparent baseline (logistic regression),
+    then test stronger tree/boosting models only if sample size supports them.
+
+    Candidate pre-game features include rolling shots/60, goals/60, individual xG when available,
+    expected line/PP role, time-on-ice trends, teammates, opponent defensive strength, projected
+    goalie, rest and home/away. Every rolling statistic must be shifted so the current game's
+    outcome is unavailable.
+
+    Use temporal train/validation/test splits. Report Brier score, log loss, calibration by bin,
+    ROC-AUC as secondary information, base rate, and bookmaker-implied probability baseline when
+    timestamp-valid market prices exist. Save predictions under workspace/.
+  expected_output: |-
+    Executed experiment report with script path, stdout, model metrics, calibration table,
+    feature definitions, prediction artifact path and explicit distinction between real and
+    synthetic/fixture experiments.
+  agent: sports_betting_ml_engineer
+  context:
+    - research_nhl_data_sources
+    - engineer_nhl_datasets
+  output_file: reports/03_model_experiments.md
+
+critique_model_results:
+  description: |-
+    Adversarially audit the researcher/data-engineer/model outputs. Check time leakage,
+    same-game features, global transforms fit before the split, calibration fitted on test data,
+    target leakage, selection/survivorship bias, small samples, multiple testing, source legality,
+    and whether odds used in ROI calculations were truly available at prediction time.
+
+    If scripts were executed, inspect the execution evidence. If they were not executed, this is
+    not a PASS. Return exactly one verdict: PASS, FAIL, or INSUFFICIENT EVIDENCE.
+  expected_output: |-
+    Audit table with issue, severity, evidence and required correction; final verdict and a
+    prioritized rework request for the manager.
+  agent: ml_methodology_critic_and_bias_detective
+  context:
+    - research_nhl_data_sources
+    - engineer_nhl_datasets
+    - train_goal_probability_models
+  output_file: reports/04_critic_audit.md
+
+run_walk_forward_backtests:
+  description: |-
+    Backtest only evidence that survives the critic. Use the Python ML Workspace and strict
+    walk-forward splits. Compute fold-level Brier/log-loss/calibration and sample sizes.
+
+    ECONOMIC TESTING RULE: calculate ROI, yield, CLV, Kelly sizing or drawdown ONLY when the
+    dataset contains genuine historical player-prop decimal odds with timestamps proving those
+    odds were available before the game. Remove vig where a full market is available. Never use
+    a made-up fixed -110/1.91 price for goal-scorer props. If real historical odds are absent,
+    report economic validation as NOT POSSIBLE and state the missing data requirement.
+
+    When real odds exist, test pre-declared EV thresholds, flat staking first, then conservative
+    fractional Kelly as a secondary analysis. Report confidence intervals and number of bets.
+  expected_output: |-
+    Executed walk-forward report, fold metrics, calibration, and—only when valid odds exist—ROI,
+    CLV, P&L and max drawdown. Otherwise a precise 'economic validation not possible' statement.
+  agent: quantitative_backtesting_specialist
+  context:
+    - train_goal_probability_models
+    - critique_model_results
+  output_file: reports/05_backtest.md
+
+build_developer_project_scaffold:
+  description: |-
+    Prepare a GitHub-ready production scaffold using only validated artifacts. Include src/, tests/,
+    FastAPI prediction API, dashboard/webapp placeholder, model/data version metadata, CI checks,
+    .env.example and deployment notes for Vercel/Netlify where appropriate. Never bundle secrets.
+
+    If the critic/backtester did not validate a real model, build the infrastructure as a research
+    prototype and clearly disable any claim that the probabilities are production-ready.
+  expected_output: |-
+    Repository file tree and implementation plan, with explicit status: research prototype or
+    validated candidate. Include next GitHub/deployment steps.
+  agent: ml_platform_developer
+  context:
+    - train_goal_probability_models
+    - critique_model_results
+    - run_walk_forward_backtests
+  output_file: reports/06_platform_plan.md
+
+final_synthesis_report:
+  description: |-
+    Reconcile the full mission into an evidence-first final report. Explicitly surface disagreements
+    between agents and explain which evidence resolves them. Never turn a FAIL/INSUFFICIENT audit
+    into a success claim. Separate real-data findings from smoke-test/synthetic findings.
+
+    Cover: verified data sources, data gaps, executed experiments, model calibration, critic verdict,
+    walk-forward evidence, economic validation status, platform status, unresolved risks and the next
+    highest-value experiments.
+  expected_output: |-
+    A self-contained Markdown report with an executive summary, evidence table, disagreements,
+    validated conclusions, rejected claims, unresolved issues and prioritized next steps.
+  agent: evidence_synthesizer
+  context:
+    - research_nhl_data_sources
+    - engineer_nhl_datasets
+    - train_goal_probability_models
+    - critique_model_results
+    - run_walk_forward_backtests
+    - build_developer_project_scaffold
+  output_file: reports/07_final_report.md

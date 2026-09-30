@@ -18,29 +18,40 @@ def inputs() -> dict[str, str]:
     return {"mission": os.getenv("MISSION", DEFAULT_MISSION)}
 
 
-def run():
+def execute():
+    """Run the crew and return its CrewOutput for programmatic callers."""
     return NhlGoalProbabilityResearchTeamCrew().crew().kickoff(inputs=inputs())
 
 
-def train():
+def run() -> None:
+    """Console entry point.
+
+    Console-script wrappers call sys.exit(return_value). Returning CrewOutput makes a
+    successful run appear as exit code 1, so deliberately discard the successful result.
+    Exceptions still propagate and correctly fail CI.
+    """
+    execute()
+
+
+def train() -> None:
     try:
-        return NhlGoalProbabilityResearchTeamCrew().crew().train(
+        NhlGoalProbabilityResearchTeamCrew().crew().train(
             n_iterations=int(sys.argv[1]), filename=sys.argv[2], inputs=inputs()
         )
     except Exception as e:
         raise Exception(f"An error occurred while training the crew: {e}") from e
 
 
-def replay():
+def replay() -> None:
     try:
-        return NhlGoalProbabilityResearchTeamCrew().crew().replay(task_id=sys.argv[1])
+        NhlGoalProbabilityResearchTeamCrew().crew().replay(task_id=sys.argv[1])
     except Exception as e:
         raise Exception(f"An error occurred while replaying the crew: {e}") from e
 
 
-def test():
+def test() -> None:
     try:
-        return NhlGoalProbabilityResearchTeamCrew().crew().test(
+        NhlGoalProbabilityResearchTeamCrew().crew().test(
             n_iterations=int(sys.argv[1]), openai_model_name=sys.argv[2], inputs=inputs()
         )
     except Exception as e:

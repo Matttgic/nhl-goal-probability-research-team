@@ -1,0 +1,55 @@
+name: Historical NHL anytime-goal backtest (The Odds API)
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/odds-api-backtest-trigger
+
+permissions:
+  contents: read
+
+jobs:
+  historical-anytime-goal-oddsapi:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    env:
+      PYTHONPATH: .
+      ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+      ODDS_REGIONS: "us"
+      ODDS_PRIMARY_MINUTES_BEFORE: "60"
+      ODDS_CLOSE_MINUTES_BEFORE: "10"
+      ODDS_CREDIT_RESERVE: "1000"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install project
+        run: uv sync
+
+      - name: Validate The Odds API secret
+        run: |
+          if [ -z "$ODDS_API_KEY" ]; then
+            echo "::error::Missing GitHub Actions secret ODDS_API_KEY"
+            echo "Add the existing The Odds API key as a repository Actions secret. Never commit it."
+            exit 2
+          fi
+
+      - name: Run frozen V2 against historical anytime-goal snapshots
+        run: uv run python scripts/historical_anytime_goal_backtest_oddsapi.py
+
+      - name: Upload historical odds backtest artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: historical-anytime-goal-oddsapi-output
+          path: |
+            reports/historical_anytime_goal_oddsapi.md
+            workspace/historical_anytime_goal_oddsapi/**
+          if-no-files-found: warn

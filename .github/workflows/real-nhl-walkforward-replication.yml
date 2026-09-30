@@ -1,0 +1,42 @@
+name: Real NHL V2 independent 2024-25 replication
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/real-nhl-walkforward-replication-trigger
+
+permissions:
+  contents: read
+
+jobs:
+  replication:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    env:
+      PYTHONPATH: .
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install project
+        run: uv sync
+
+      - name: Run frozen V2 on independent 2024-25 temporal folds
+        run: uv run python scripts/real_nhl_player_goal_walkforward_replication.py
+
+      - name: Upload replication artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: real-nhl-walkforward-replication-output
+          path: |
+            reports/real_nhl_walkforward_replication.md
+            workspace/real_nhl_walkforward_replication/**
+          if-no-files-found: warn

@@ -1,0 +1,38 @@
+name: Live US NHL anytime-goal picks to Telegram
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/live-us-anytime-goal-picks-trigger
+
+permissions:
+  contents: read
+
+jobs:
+  picks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      PYTHONPATH: .
+      ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      LIVE_PICK_WINDOW_MINUTES: "180"
+      LIVE_PICK_MIN_LEAD_MINUTES: "15"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - name: Install project
+        run: uv sync
+      - name: Validate required secrets
+        run: |
+          test -n "$ODDS_API_KEY" || (echo "::error::Missing ODDS_API_KEY" && exit 2)
+          test -n "$TELEGRAM_BOT_TOKEN" || (echo "::error::Missing TELEGRAM_BOT_TOKEN" && exit 2)
+          test -n "$TELEGRAM_CHAT_ID" || (echo "::error::Missing TELEGRAM_CHAT_ID" && exit 2)
+      - name: Generate live qualified scorer picks and send Telegram
+        run: uv run python scripts/live_us_anytime_goal_picks.py

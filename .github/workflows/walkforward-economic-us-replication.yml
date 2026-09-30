@@ -1,0 +1,66 @@
+name: Independent 2024-25 US economic replication
+
+on:
+  workflow_run:
+    workflows:
+      - Real NHL V2 independent 2024-25 replication
+    types:
+      - completed
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  economic-replication:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    env:
+      PYTHONPATH: .
+      ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+      ODDS_REGIONS: "us"
+      ODDS_CREDIT_RESERVE: "12000"
+      WF_ODDS_GAMES_PER_FOLD: "40"
+      WF_FOLDS: "2024-12,2025-01,2025-02,2025-03,2025-04"
+      WF_PRED_PATH: "cached/replication/workspace/real_nhl_walkforward_replication/walkforward_predictions_sampled_games.csv"
+      WF_ECON_OUT: "workspace/walkforward_economic_us_replication"
+      WF_ECON_REPORT: "reports/walkforward_economic_us_replication.md"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install project
+        run: uv sync
+
+      - name: Validate Odds API secret
+        run: test -n "$ODDS_API_KEY" || (echo "::error::Missing ODDS_API_KEY" && exit 2)
+
+      - name: Download independent probability replication artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: real-nhl-walkforward-replication-output
+          path: cached/replication
+          repository: Matttgic/nhl-goal-probability-research-team
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+
+      - name: Run frozen primary economic rule on independent season
+        run: uv run python scripts/walkforward_historical_economic_us.py
+
+      - name: Upload independent economic replication summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: walkforward-economic-us-replication-output
+          path: |
+            reports/walkforward_economic_us_replication.md
+            workspace/walkforward_economic_us_replication/metrics.json
+            workspace/walkforward_economic_us_replication/fold_economic_metrics.csv
+            workspace/walkforward_economic_us_replication/errors.json
+          if-no-files-found: warn

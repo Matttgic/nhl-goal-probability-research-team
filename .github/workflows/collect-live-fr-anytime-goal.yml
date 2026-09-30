@@ -1,0 +1,27 @@
+name: Collect live French NHL anytime-goal snapshots
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      PYTHONPATH: .
+      ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+      NHL_ODDS_DATABASE_URL: ${{ secrets.NHL_ODDS_DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - name: Install project
+        run: uv sync
+      - name: Validate private database secret
+        run: test -n "$NHL_ODDS_DATABASE_URL" || (echo "::error::Missing NHL_ODDS_DATABASE_URL" && exit 2)
+      - name: Collect 60m/10m French bookmaker snapshots privately
+        run: uv run python scripts/collect_live_fr_anytime_goal_to_postgres.py

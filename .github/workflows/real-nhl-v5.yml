@@ -23,6 +23,8 @@ jobs:
       - name: Install project
         run: uv sync
       - name: Run NHL V5 with historical line stability
+        env:
+          PYTHONPATH: .
         run: uv run python scripts/real_nhl_player_goal_v5.py
       - name: Upload NHL V5 artifacts
         if: always()

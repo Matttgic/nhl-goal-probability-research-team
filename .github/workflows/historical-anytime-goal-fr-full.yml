@@ -1,0 +1,81 @@
+name: Historical NHL anytime-goal FR full backtest
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/odds-api-fr-full-trigger
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  fr-full:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    env:
+      PYTHONPATH: .
+      ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+      ODDS_REGIONS: "fr"
+      ODDS_PRIMARY_MINUTES_BEFORE: "60"
+      ODDS_CLOSE_MINUTES_BEFORE: "10"
+      ODDS_CREDIT_RESERVE: "12000"
+      BACKTEST_V2_PATH: "cached/v2/workspace/real_nhl_v2/test_predictions.csv"
+      BACKTEST_ENTRY_PATH: "workspace/historical_anytime_goal_fr_raw/entry_raw_prices.csv"
+      BACKTEST_CLOSE_PATH: "workspace/historical_anytime_goal_fr_raw/close_raw_prices.csv"
+      BACKTEST_OUT: "workspace/historical_anytime_goal_fr_backtest"
+      BACKTEST_REPORT: "reports/historical_anytime_goal_fr_backtest.md"
+      BACKTEST_REGION_LABEL: "France (fr)"
+      BACKTEST_PRIMARY_EV: "0.05"
+      BACKTEST_MAX_ODDS: "8.0"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install project
+        run: uv sync
+
+      - name: Validate The Odds API secret
+        run: test -n "$ODDS_API_KEY" || (echo "::error::Missing ODDS_API_KEY" && exit 2)
+
+      - name: Download frozen V2 artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: real-nhl-v2-output
+          path: cached/v2
+          repository: Matttgic/nhl-goal-probability-research-team
+          run-id: 36753181078
+          github-token: ${{ github.token }}
+
+      - name: Download cached US historical artifact for stable event IDs
+        uses: actions/download-artifact@v4
+        with:
+          name: historical-anytime-goal-oddsapi-output
+          path: cached/us
+          repository: Matttgic/nhl-goal-probability-research-team
+          run-id: 36763766175
+          github-token: ${{ github.token }}
+
+      - name: Fetch French historical anytime-goal prices on the same 69 games
+        run: uv run python scripts/fetch_historical_anytime_goal_fr_from_cached_events.py
+
+      - name: Run conservative French economic backtest
+        run: uv run python scripts/postprocess_anytime_goal_backtest_generic.py
+
+      - name: Upload French backtest artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: historical-anytime-goal-fr-full-output
+          path: |
+            reports/historical_anytime_goal_fr_backtest.md
+            workspace/historical_anytime_goal_fr_raw/**
+            workspace/historical_anytime_goal_fr_backtest/**
+          if-no-files-found: warn

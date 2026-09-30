@@ -7,6 +7,11 @@ on:
         description: Lightweight mission for validating collaboration
         required: false
         default: Research and verify a small set of accessible NHL historical odds and player-stat sources. Challenge weak claims and produce an evidence-first next-step plan. Do not attempt a full production model in this free smoke test.
+  push:
+    branches:
+      - main
+    paths:
+      - .github/free-test-trigger
 
 permissions:
   contents: read
@@ -16,7 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
-      MISSION: ${{ inputs.mission }}
+      MISSION: ${{ inputs.mission || 'Research and verify a small set of accessible NHL historical odds and player-stat sources. Challenge weak claims and produce an evidence-first next-step plan. Do not attempt a full production model in this free smoke test.' }}
       OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
       EXA_API_KEY: ${{ secrets.EXA_API_KEY }}
       RESEARCHER_MODEL: openrouter/openrouter/free

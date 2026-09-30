@@ -1,0 +1,35 @@
+name: Real NHL player-goal V4
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/real-nhl-v4-trigger
+
+permissions:
+  contents: read
+
+jobs:
+  real-nhl-v4:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - name: Install project
+        run: uv sync
+      - name: Run NHL V4 with MoneyPuck xG and PP features
+        run: uv run python scripts/real_nhl_player_goal_v4.py
+      - name: Upload NHL V4 artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: real-nhl-v4-output
+          path: |
+            reports/real_nhl_v4.md
+            workspace/real_nhl_v4/**
+          if-no-files-found: warn

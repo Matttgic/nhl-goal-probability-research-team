@@ -21,10 +21,13 @@ def main() -> None:
         },
         timeout=30,
     )
-    r.raise_for_status()
-    payload = r.json()
-    if not payload.get("ok"):
-        raise RuntimeError(f"Telegram returned ok=false: {payload}")
+    try:
+        payload = r.json()
+    except Exception:
+        payload = {}
+    if not r.ok or not payload.get("ok"):
+        description = str(payload.get("description") or f"HTTP {r.status_code}")
+        raise RuntimeError(f"Telegram send failed: {description}")
     print("Telegram smoke test sent successfully")
 
 

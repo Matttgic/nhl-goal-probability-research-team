@@ -1,0 +1,35 @@
+name: Real NHL player-goal V5
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/v5-trigger
+
+permissions:
+  contents: read
+
+jobs:
+  real-nhl-v5:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - name: Install project
+        run: uv sync
+      - name: Run NHL V5 with historical line stability
+        run: uv run python scripts/real_nhl_player_goal_v5.py
+      - name: Upload NHL V5 artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: real-nhl-v5-output
+          path: |
+            reports/real_nhl_v5.md
+            workspace/real_nhl_v5/**
+          if-no-files-found: warn

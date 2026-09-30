@@ -78,8 +78,16 @@ critique_model_results:
 
 run_walk_forward_backtests:
   description: |-
-    Backtest only evidence that survives the critic. Use the Python ML Workspace and strict
-    walk-forward splits. Compute fold-level Brier/log-loss/calibration and sample sizes.
+    Read the critic verdict first.
+
+    If the critic verdict is FAIL or INSUFFICIENT EVIDENCE, STOP immediately. Do not call tools,
+    do not execute Python, and do not attempt to rescue or reinterpret the experiment. Report
+    BACKTEST BLOCKED, quote the exact blocking reasons from the critic, and list the minimum
+    evidence/data changes required before a valid backtest can run.
+
+    Only if the critic verdict is PASS, backtest the surviving evidence using strict walk-forward
+    splits. Use the Python ML Workspace and compute fold-level Brier/log-loss/calibration and
+    sample sizes.
 
     ECONOMIC TESTING RULE: calculate ROI, yield, CLV, Kelly sizing or drawdown ONLY when the
     dataset contains genuine historical player-prop decimal odds with timestamps proving those
@@ -90,8 +98,9 @@ run_walk_forward_backtests:
     When real odds exist, test pre-declared EV thresholds, flat staking first, then conservative
     fractional Kelly as a secondary analysis. Report confidence intervals and number of bets.
   expected_output: |-
-    Executed walk-forward report, fold metrics, calibration, and—only when valid odds exist—ROI,
-    CLV, P&L and max drawdown. Otherwise a precise 'economic validation not possible' statement.
+    Either (A) BACKTEST BLOCKED with critic-backed reasons and precise rework requirements, or
+    (B) an executed walk-forward report with fold metrics, calibration, and—only when valid odds
+    exist—ROI, CLV, P&L and max drawdown. Otherwise state economic validation not possible.
   agent: quantitative_backtesting_specialist
   context:
     - train_goal_probability_models

@@ -13,30 +13,32 @@ MARKET = "player_goal_scorer_anytime"
 WINDOWS = [(60, 9), (10, 9)]
 ALLOWED_BOOKS = {"betclic_fr", "netbet_fr", "pmu_fr", "unibet_fr", "winamax_fr"}
 
-SCHEMA_SQL = """
-CREATE TABLE IF NOT EXISTS nhl_anytime_goal_fr_snapshots (
-    id BIGSERIAL PRIMARY KEY,
-    event_id TEXT NOT NULL,
-    commence_time TIMESTAMPTZ NOT NULL,
-    snapshot_at TIMESTAMPTZ NOT NULL,
-    target_minutes_before INTEGER NOT NULL,
-    actual_minutes_before DOUBLE PRECISION NOT NULL,
-    home_team TEXT NOT NULL,
-    away_team TEXT NOT NULL,
-    bookmaker_key TEXT NOT NULL,
-    bookmaker_title TEXT,
-    market_last_update TIMESTAMPTZ,
-    player_name TEXT NOT NULL,
-    side TEXT NOT NULL,
-    decimal_odds DOUBLE PRECISION NOT NULL,
-    api_source TEXT NOT NULL DEFAULT 'the-odds-api',
-    inserted_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    UNIQUE(event_id, target_minutes_before, bookmaker_key, player_name, side)
-);
-CREATE INDEX IF NOT EXISTS idx_nhl_anytime_fr_event ON nhl_anytime_goal_fr_snapshots(event_id);
-CREATE INDEX IF NOT EXISTS idx_nhl_anytime_fr_commence ON nhl_anytime_goal_fr_snapshots(commence_time);
-CREATE INDEX IF NOT EXISTS idx_nhl_anytime_fr_player ON nhl_anytime_goal_fr_snapshots(player_name);
-"""
+SCHEMA_STATEMENTS = [
+    """
+    CREATE TABLE IF NOT EXISTS nhl_anytime_goal_fr_snapshots (
+        id BIGSERIAL PRIMARY KEY,
+        event_id TEXT NOT NULL,
+        commence_time TIMESTAMPTZ NOT NULL,
+        snapshot_at TIMESTAMPTZ NOT NULL,
+        target_minutes_before INTEGER NOT NULL,
+        actual_minutes_before DOUBLE PRECISION NOT NULL,
+        home_team TEXT NOT NULL,
+        away_team TEXT NOT NULL,
+        bookmaker_key TEXT NOT NULL,
+        bookmaker_title TEXT,
+        market_last_update TIMESTAMPTZ,
+        player_name TEXT NOT NULL,
+        side TEXT NOT NULL,
+        decimal_odds DOUBLE PRECISION NOT NULL,
+        api_source TEXT NOT NULL DEFAULT 'the-odds-api',
+        inserted_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        UNIQUE(event_id, target_minutes_before, bookmaker_key, player_name, side)
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_nhl_anytime_fr_event ON nhl_anytime_goal_fr_snapshots(event_id)",
+    "CREATE INDEX IF NOT EXISTS idx_nhl_anytime_fr_commence ON nhl_anytime_goal_fr_snapshots(commence_time)",
+    "CREATE INDEX IF NOT EXISTS idx_nhl_anytime_fr_player ON nhl_anytime_goal_fr_snapshots(player_name)",
+]
 
 
 def now_utc() -> datetime:
@@ -77,10 +79,15 @@ def main() -> None:
 
     inserted = 0
     queried = 0
-    coverage = {}
+    coverage: dict[str, int] = {}
+    last_remaining = events_resp.headers.get("x-requests-remaining")
+    last_used = events_resp.headers.get("x-requests-used")
+
     with psycopg.connect(db_url) as conn:
         with conn.cursor() as cur:
-            cur.execute(SCHEMA_SQL)
+            for statement in SCHEMA_STATEMENTS:
+                cur.execute(statement)
+
             for event, start, minutes, target_window in targets:
                 r = session.get(
                     f"{BASE}/sports/{SPORT}/events/{event['id']}/odds",
@@ -94,6 +101,8 @@ def main() -> None:
                     timeout=30,
                 )
                 queried += 1
+                last_remaining = r.headers.get("x-requests-remaining", last_remaining)
+                last_used = r.headers.get("x-requests-used", last_used)
                 if r.status_code == 422:
                     continue
                 r.raise_for_status()
@@ -148,6 +157,8 @@ def main() -> None:
         "event_prop_queries": queried,
         "rows_upserted": inserted,
         "fr_bookmaker_markets_seen": coverage,
+        "quota_used_header": last_used,
+        "quota_remaining_header": last_remaining,
         "windows": [{"target_minutes_before": t, "tolerance_minutes": tol} for t, tol in WINDOWS],
         "raw_prices_logged": False,
     }, indent=2))

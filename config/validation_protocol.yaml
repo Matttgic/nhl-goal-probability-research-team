@@ -1,4 +1,4 @@
-protocol_version: 1
+protocol_version: 2
 frozen_at: "2026-09-30"
 objective: "Estimate pregame NHL player probability of scoring at least one goal and test whether independent probabilities identify positive-EV anytime-goal prices."
 
@@ -12,7 +12,7 @@ primary_model:
 
 probability_validation:
   split_method: "expanding-window temporal walk-forward"
-  folds:
+  development_evaluation_folds:
     - label: "2025-12"
       train_end_exclusive: "2025-12-01"
       test_end_exclusive: "2026-01-01"
@@ -28,12 +28,29 @@ probability_validation:
     - label: "2026-04"
       train_end_exclusive: "2026-04-01"
       test_end_exclusive: "2026-04-17"
+  confirmatory_replication_folds_frozen_before_results:
+    - label: "2024-12"
+      train_end_exclusive: "2024-12-01"
+      test_end_exclusive: "2025-01-01"
+    - label: "2025-01"
+      train_end_exclusive: "2025-01-01"
+      test_end_exclusive: "2025-02-01"
+    - label: "2025-02"
+      train_end_exclusive: "2025-02-01"
+      test_end_exclusive: "2025-03-01"
+    - label: "2025-03"
+      train_end_exclusive: "2025-03-01"
+      test_end_exclusive: "2025-04-01"
+    - label: "2025-04"
+      train_end_exclusive: "2025-04-01"
+      test_end_exclusive: "2025-04-18"
   primary_metrics:
     - brier
     - log_loss
   secondary_metrics:
     - roc_auc
   baseline: "constant training-period scoring rate"
+  replication_success_definition: "The fixed model should beat the constant-rate baseline on aggregate Brier and Log Loss in the 2024-25 replication; fold-level consistency is reported without changing the specification."
 
 economic_validation:
   market: "player_goal_scorer_anytime"
@@ -53,6 +70,13 @@ economic_validation:
     - clv
   diagnostic_ev_thresholds: [0.0, 0.03, 0.05, 0.08, 0.10, 0.15, 0.20]
   p_hacking_guardrail: "Only 5% EV is the primary rule. Diagnostic thresholds must not be promoted because of observed test results without a new independent future validation sample."
+  confirmatory_replication_frozen_before_results:
+    season: "2024-25"
+    folds: ["2024-12", "2025-01", "2025-02", "2025-03", "2025-04"]
+    paid_odds_sample: "40 games per fold, selected deterministically and evenly through each fold by chronology; no outcome-based selection."
+    primary_rule: "EV >= 5%, decimal odds <= 8.00, flat 1 unit."
+    primary_success_definition: "Replication overall ROI must be greater than zero. Statistical uncertainty and individual folds are reported; profitability is not called established unless evidence across independent periods is sufficiently precise and robust."
+    quota_guardrail: "Preserve at least 12,000 The Odds API credits; stop rather than breach the reserve."
 
 market_scope:
   historical_us:
@@ -63,7 +87,7 @@ market_scope:
     note: "The Odds API returned no NHL anytime-goal prices for region fr on the tested historical games."
   live_fr:
     status: "monitored"
-    note: "Daily coverage probe checks all upcoming NHL games without logging raw prices."
+    note: "Daily coverage probe checks all upcoming NHL games without logging raw prices and opens one GitHub issue if French scorer props appear."
 
 matching:
   player_name_rule: "Within the same game, normalized first initial plus surname. Exclude ambiguous collisions; never guess."

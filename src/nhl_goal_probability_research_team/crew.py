@@ -9,14 +9,33 @@ from crewai_tools import ArxivPaperTool, ExaSearchTool, FileReadTool, JinaScrape
 from nhl_goal_probability_research_team.tools import PythonWorkspaceTool
 
 
-def model_from_env(name: str, fallback: str = "openai/gpt-5.6-luna") -> LLM:
+FREE_MODEL = "openrouter/openrouter/free"
+
+
+def _truthy(value: str | None) -> bool:
+    return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def model_from_env(name: str, fallback: str = FREE_MODEL) -> LLM:
     """Create an LLM from an environment variable.
 
-    The value must use a CrewAI/LiteLLM provider/model identifier. This keeps the
-    project multi-model ready without hard-coding API-only model names that may
-    differ between providers/accounts.
+    Blank GitHub variables are treated as unset. The zero-cost default routes through
+    OpenRouter's free-model router; production runs can override each role separately.
     """
-    return LLM(model=os.getenv(name, fallback), temperature=0.1)
+    model = (os.getenv(name) or "").strip() or fallback
+    return LLM(model=model, temperature=0.1)
+
+
+def worker_max_iter() -> int:
+    if _truthy(os.getenv("CHEAP_TEST")):
+        return 3
+    return int(os.getenv("WORKER_MAX_ITER", "20"))
+
+
+def manager_max_iter() -> int:
+    if _truthy(os.getenv("CHEAP_TEST")):
+        return 6
+    return int(os.getenv("MANAGER_MAX_ITER", "35"))
 
 
 @CrewBase
@@ -30,7 +49,7 @@ class NhlGoalProbabilityResearchTeamCrew:
             tools=[ExaSearchTool(), ScrapeWebsiteTool(), JinaScrapeWebsiteTool()],
             inject_date=True,
             allow_delegation=False,
-            max_iter=20,
+            max_iter=worker_max_iter(),
             llm=model_from_env("RESEARCHER_MODEL"),
         )
 
@@ -41,7 +60,7 @@ class NhlGoalProbabilityResearchTeamCrew:
             tools=[FileReadTool(), ExaSearchTool(), PythonWorkspaceTool()],
             inject_date=True,
             allow_delegation=False,
-            max_iter=20,
+            max_iter=worker_max_iter(),
             llm=model_from_env("DATA_ENGINEER_MODEL"),
         )
 
@@ -52,7 +71,7 @@ class NhlGoalProbabilityResearchTeamCrew:
             tools=[FileReadTool(), ArxivPaperTool(), PythonWorkspaceTool()],
             inject_date=True,
             allow_delegation=False,
-            max_iter=25,
+            max_iter=worker_max_iter(),
             llm=model_from_env("ML_SCIENTIST_MODEL"),
         )
 
@@ -63,7 +82,7 @@ class NhlGoalProbabilityResearchTeamCrew:
             tools=[ExaSearchTool(), ArxivPaperTool(), FileReadTool()],
             inject_date=True,
             allow_delegation=False,
-            max_iter=20,
+            max_iter=worker_max_iter(),
             llm=model_from_env("CRITIC_MODEL"),
         )
 
@@ -74,7 +93,7 @@ class NhlGoalProbabilityResearchTeamCrew:
             tools=[FileReadTool(), ArxivPaperTool(), PythonWorkspaceTool()],
             inject_date=True,
             allow_delegation=False,
-            max_iter=25,
+            max_iter=worker_max_iter(),
             llm=model_from_env("BACKTESTER_MODEL"),
         )
 
@@ -85,7 +104,7 @@ class NhlGoalProbabilityResearchTeamCrew:
             tools=[FileReadTool()],
             inject_date=True,
             allow_delegation=False,
-            max_iter=20,
+            max_iter=worker_max_iter(),
             llm=model_from_env("DEVELOPER_MODEL"),
         )
 
@@ -96,7 +115,7 @@ class NhlGoalProbabilityResearchTeamCrew:
             tools=[FileReadTool(), ExaSearchTool()],
             inject_date=True,
             allow_delegation=False,
-            max_iter=20,
+            max_iter=worker_max_iter(),
             llm=model_from_env("SYNTHESIZER_MODEL"),
         )
 
@@ -104,7 +123,7 @@ class NhlGoalProbabilityResearchTeamCrew:
         return Agent(
             config=self.agents_config["research_supervisor_and_final_arbiter"],
             allow_delegation=True,
-            max_iter=35,
+            max_iter=manager_max_iter(),
             llm=model_from_env("MANAGER_MODEL"),
         )
 
@@ -148,11 +167,12 @@ class NhlGoalProbabilityResearchTeamCrew:
             self.evidence_synthesizer(),
         ]
 
+        cheap_test = _truthy(os.getenv("CHEAP_TEST"))
         return Crew(
             agents=workers,
             tasks=self.tasks,
             manager_agent=self.manager(),
             process=Process.hierarchical,
-            planning=True,
+            planning=not cheap_test,
             verbose=True,
         )

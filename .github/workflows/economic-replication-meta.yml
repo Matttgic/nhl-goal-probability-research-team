@@ -1,0 +1,54 @@
+name: Economic replication meta-summary
+
+on:
+  workflow_run:
+    workflows:
+      - Independent 2024-25 US economic replication
+    types:
+      - completed
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  meta:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      META_DEV_FOLDS: "cached/dev/workspace/walkforward_economic_us/fold_economic_metrics.csv"
+      META_REP_FOLDS: "cached/rep/workspace/walkforward_economic_us_replication/fold_economic_metrics.csv"
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - name: Install project
+        run: uv sync
+      - name: Download 2025-26 economic validation
+        uses: actions/download-artifact@v4
+        with:
+          name: walkforward-economic-us-output
+          path: cached/dev
+          repository: Matttgic/nhl-goal-probability-research-team
+          run-id: 36773315868
+          github-token: ${{ github.token }}
+      - name: Download independent 2024-25 economic replication
+        uses: actions/download-artifact@v4
+        with:
+          name: walkforward-economic-us-replication-output
+          path: cached/rep
+          repository: Matttgic/nhl-goal-probability-research-team
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+      - name: Combine monthly folds without new odds requests
+        run: uv run python scripts/combine_economic_replications.py
+      - name: Upload meta-summary
+        uses: actions/upload-artifact@v4
+        with:
+          name: economic-replication-meta-output
+          path: |
+            reports/economic_replication_meta.md
+            workspace/economic_replication_meta/**

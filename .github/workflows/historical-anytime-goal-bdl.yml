@@ -2,6 +2,11 @@ name: Historical NHL anytime-goal backtest (BDL)
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/historical-odds-trigger
 
 permissions:
   contents: read
@@ -26,6 +31,9 @@ jobs:
 
       - name: Install project
         run: uv sync
+
+      - name: Compile historical backtest script
+        run: uv run python -m py_compile scripts/historical_anytime_goal_backtest_bdl.py
 
       - name: Validate BALLDONTLIE secret
         run: |

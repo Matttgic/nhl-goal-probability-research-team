@@ -1,0 +1,51 @@
+name: Historical NHL anytime-goal EU probe for French books
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/odds-api-eu-probe-trigger
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  eu-probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      PYTHONPATH: .
+      ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+      ODDS_REGIONS: "eu"
+      ODDS_PRIMARY_MINUTES_BEFORE: "60"
+      ODDS_CLOSE_MINUTES_BEFORE: "10"
+      ODDS_MAX_TEST_GAMES: "5"
+      ODDS_CREDIT_RESERVE: "12000"
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - name: Install project
+        run: uv sync
+      - name: Download cached historical event IDs
+        uses: actions/download-artifact@v4
+        with:
+          name: historical-anytime-goal-oddsapi-output
+          path: cached/us
+          repository: Matttgic/nhl-goal-probability-research-team
+          run-id: 36763766175
+          github-token: ${{ github.token }}
+      - name: Probe EU historical player-goal prices
+        run: uv run python scripts/fetch_historical_anytime_goal_fr_from_cached_events.py
+      - name: Upload EU probe artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: historical-anytime-goal-eu-probe-output
+          path: workspace/historical_anytime_goal_fr_raw/**
+          if-no-files-found: warn

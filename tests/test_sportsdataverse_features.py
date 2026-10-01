@@ -50,10 +50,46 @@ class GoalScorerFeatureTests(unittest.TestCase):
         game4 = out.loc[out["game_id"] == 4].iloc[0]
 
         self.assertEqual(game4["label_goal"], 1)
-        # Current game goal is excluded: prior three games contain exactly two goals.
         self.assertEqual(game4["recent_goals_3"], 2)
         self.assertAlmostEqual(game4["recent_ixg_3"], 0.65, places=6)
         self.assertTrue(bool(game4["history_ready"]))
+
+    def test_linemate_feature_uses_previous_game_deployment(self):
+        box = pd.DataFrame(
+            {
+                "game_id": [1, 1, 2, 2, 3, 3],
+                "player_id": [10, 20, 10, 30, 10, 40],
+                "player_name": ["Shooter", "Old Mate", "Shooter", "New Mate", "Shooter", "Future Mate"],
+                "position": ["C", "W", "C", "W", "C", "W"],
+                "game_date": ["2026-01-01", "2026-01-01", "2026-01-03", "2026-01-03", "2026-01-05", "2026-01-05"],
+                "goals": [0, 0, 0, 0, 0, 0],
+                "assists": [0, 0, 0, 0, 0, 0],
+                "shots_on_goal": [2, 2, 3, 1, 4, 1],
+                "power_play_goals": [0] * 6,
+                "shifts": [20] * 6,
+                "toi": ["18:00"] * 6,
+            }
+        )
+        pbp = pd.DataFrame(
+            {
+                "game_id": [1, 2, 3],
+                "event_type": ["SHOT", "SHOT", "SHOT"],
+                "event_player_1_id": [10, 10, 10],
+                "event_team_type": ["home"] * 3,
+                "home_skaters": [5] * 3,
+                "away_skaters": [5] * 3,
+                "xg": [0.1, 0.2, 0.3],
+                "home_on_1_id": [10, 10, 10],
+                "home_on_2_id": [20, 30, 40],
+                "home_goalie_id": [99, 99, 99],
+            }
+        )
+        out = build_goal_scorer_dataset(pbp, box, recent_games=2, min_history_games=1, include_linemates=True)
+        shooter2 = out[(out["game_id"] == 2) & (out["player_id"] == 10)].iloc[0]
+        shooter3 = out[(out["game_id"] == 3) & (out["player_id"] == 10)].iloc[0]
+        self.assertEqual(int(shooter2["top_linemate_id"]), 20)
+        self.assertEqual(int(shooter3["top_linemate_id"]), 30)
+        self.assertNotEqual(int(shooter3["top_linemate_id"]), 40)
 
 
 if __name__ == "__main__":

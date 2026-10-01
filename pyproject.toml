@@ -20,6 +20,11 @@ dependencies = [
     "psycopg[binary]>=3.2",
 ]
 
+[project.optional-dependencies]
+sports = [
+    "sportsdataverse>=0.0.75,<1.0.0",
+]
+
 [project.scripts]
 nhl_goal_probability_research_team = "nhl_goal_probability_research_team.main:run"
 run_crew = "nhl_goal_probability_research_team.main:run"

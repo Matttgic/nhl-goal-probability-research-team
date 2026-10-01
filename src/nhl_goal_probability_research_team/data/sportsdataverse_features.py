@@ -10,11 +10,7 @@ SHOT_EVENTS = {"SHOT", "GOAL", "MISSED_SHOT", "MISSED SHOT"}
 
 
 def load_sportsdataverse_frames(seasons: int | Iterable[int]) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Load NHL play-by-play and player boxscores from SportsDataverse releases.
-
-    The loader intentionally uses the Python companion of fastRhockey because it
-    reads the same SportsDataverse release store while fitting this Python project.
-    """
+    """Load NHL play-by-play and player boxscores from SportsDataverse releases."""
     try:
         from sportsdataverse.nhl import load_nhl_pbp, load_nhl_player_boxscore
     except ImportError as exc:  # pragma: no cover - environment dependent
@@ -90,17 +86,20 @@ def _aggregate_shot_events(pbp: pd.DataFrame) -> pd.DataFrame:
     if shots.empty:
         return pd.DataFrame(columns=["game_id", "player_id", "pbp_shots", "pbp_goals", "ixg", "pp_shots", "pp_ixg", "avg_shot_distance"])
 
-    shots["player_id"] = pd.to_numeric(shots.get("event_player_1_id"), errors="coerce")
+    player_ids = shots["event_player_1_id"] if "event_player_1_id" in shots else pd.Series(np.nan, index=shots.index)
+    shots["player_id"] = pd.to_numeric(player_ids, errors="coerce")
     shots = shots.dropna(subset=["game_id", "player_id"])
     shots["player_id"] = shots["player_id"].astype("int64")
     shots["pbp_goals"] = (shots["_event"] == "GOAL").astype(int)
-    shots["ixg"] = pd.to_numeric(shots.get("xg", 0.0), errors="coerce").fillna(0.0)
+    xg = shots["xg"] if "xg" in shots else pd.Series(0.0, index=shots.index)
+    shots["ixg"] = pd.to_numeric(xg, errors="coerce").fillna(0.0)
     shots["_is_pp"] = shots.apply(_is_power_play, axis=1).astype(int)
     shots["pp_shots"] = shots["_is_pp"]
     shots["pp_ixg"] = shots["ixg"] * shots["_is_pp"]
-    shots["shot_distance"] = pd.to_numeric(shots.get("shot_distance", np.nan), errors="coerce")
+    distance = shots["shot_distance"] if "shot_distance" in shots else pd.Series(np.nan, index=shots.index)
+    shots["shot_distance"] = pd.to_numeric(distance, errors="coerce")
 
-    out = (
+    return (
         shots.groupby(["game_id", "player_id"], as_index=False)
         .agg(
             pbp_shots=("player_id", "size"),
@@ -111,25 +110,18 @@ def _aggregate_shot_events(pbp: pd.DataFrame) -> pd.DataFrame:
             avg_shot_distance=("shot_distance", "mean"),
         )
     )
-    return out
 
 
 def _linemate_event_overlap(pbp: pd.DataFrame) -> pd.DataFrame:
-    """Approximate deployment chemistry from actual on-ice event overlap.
-
-    SportsDataverse's full NHL PBP exposes home_on_1_id..home_on_7_id and the
-    away equivalents. Counting co-presence across events is robust to projected
-    lines and produces a useful deployment signal without using future games.
-    """
+    """Measure within-game on-ice overlap; callers must shift it before modelling."""
     pair_counts: dict[tuple[int, int], Counter[int]] = defaultdict(Counter)
     event_counts: Counter[tuple[int, int]] = Counter()
     home_cols = [f"home_on_{i}_id" for i in range(1, 8)]
     away_cols = [f"away_on_{i}_id" for i in range(1, 8)]
-
     needed = ["game_id", *home_cols, *away_cols, "home_goalie_id", "away_goalie_id"]
     frame = pbp[[c for c in needed if c in pbp.columns]].copy()
     if "game_id" not in frame.columns:
-        return pd.DataFrame(columns=["game_id", "player_id", "top_linemate_id", "top_linemate_event_share"])
+        return pd.DataFrame(columns=["game_id", "player_id", "observed_top_linemate_id", "observed_top_linemate_event_share"])
 
     def ids_from_row(row: pd.Series, cols: list[str], goalie_col: str) -> list[int]:
         goalie = pd.to_numeric(row.get(goalie_col), errors="coerce")
@@ -167,13 +159,12 @@ def _linemate_event_overlap(pbp: pd.DataFrame) -> pd.DataFrame:
         if not counts:
             continue
         teammate_id, overlap = counts.most_common(1)[0]
-        denominator = max(event_counts[(game_id, player_id)], 1)
         rows.append(
             {
                 "game_id": game_id,
                 "player_id": player_id,
-                "top_linemate_id": teammate_id,
-                "top_linemate_event_share": overlap / denominator,
+                "observed_top_linemate_id": teammate_id,
+                "observed_top_linemate_event_share": overlap / max(event_counts[(game_id, player_id)], 1),
             }
         )
     return pd.DataFrame(rows)
@@ -187,11 +178,7 @@ def build_goal_scorer_dataset(
     min_history_games: int = 3,
     include_linemates: bool = True,
 ) -> pd.DataFrame:
-    """Build one leakage-safe row per skater-game for goal-scorer modelling.
-
-    Labels come from the current game, while every rolling predictor is shifted by
-    one game. This function therefore supports temporal / walk-forward training.
-    """
+    """Build one leakage-safe row per skater-game for pregame goal-scorer modelling."""
     if recent_games < 2:
         raise ValueError("recent_games must be >= 2")
 
@@ -200,7 +187,6 @@ def build_goal_scorer_dataset(
     missing = required - set(box.columns)
     if missing:
         raise ValueError(f"player_box is missing required columns: {sorted(missing)}")
-
     if "position" in box.columns:
         box = box[box["position"].astype(str).str.upper().ne("G")].copy()
 
@@ -209,59 +195,35 @@ def build_goal_scorer_dataset(
     box = box.dropna(subset=["game_id", "player_id"]).copy()
     box[["game_id", "player_id"]] = box[["game_id", "player_id"]].astype("int64")
     box["game_date"] = pd.to_datetime(box["game_date"], errors="coerce", utc=True)
-    box["toi_seconds"] = box.get("toi", 0).map(_toi_to_seconds)
+    toi = box["toi"] if "toi" in box else pd.Series(0, index=box.index)
+    box["toi_seconds"] = toi.map(_toi_to_seconds)
 
-    numeric_defaults = {
-        "goals": 0,
-        "assists": 0,
-        "shots_on_goal": 0,
-        "power_play_goals": 0,
-        "shifts": 0,
-    }
-    for col, default in numeric_defaults.items():
+    for col, default in {"goals": 0, "assists": 0, "shots_on_goal": 0, "power_play_goals": 0, "shifts": 0}.items():
         if col not in box.columns:
             box[col] = default
         box[col] = pd.to_numeric(box[col], errors="coerce").fillna(default)
 
     shot_features = _aggregate_shot_events(pbp)
     data = box.merge(shot_features, on=["game_id", "player_id"], how="left")
-    fill_zero = ["pbp_shots", "pbp_goals", "ixg", "pp_shots", "pp_ixg"]
-    for col in fill_zero:
-        data[col] = pd.to_numeric(data.get(col, 0), errors="coerce").fillna(0.0)
+    for col in ["pbp_shots", "pbp_goals", "ixg", "pp_shots", "pp_ixg"]:
+        if col not in data.columns:
+            data[col] = 0.0
+        data[col] = pd.to_numeric(data[col], errors="coerce").fillna(0.0)
 
-    # Prefer official boxscore shots/goals for labels; PBP is used for richer shot quality.
     data["label_goal"] = (data["goals"] > 0).astype(int)
     data = data.sort_values(["player_id", "game_date", "game_id"]).reset_index(drop=True)
-
     grouped = data.groupby("player_id", group_keys=False)
-    rolling_sum_cols = ["goals", "shots_on_goal", "ixg", "pp_shots", "pp_ixg", "toi_seconds"]
-    for col in rolling_sum_cols:
+
+    for col in ["goals", "shots_on_goal", "ixg", "pp_shots", "pp_ixg", "toi_seconds"]:
         data[f"recent_{col}_{recent_games}"] = grouped[col].transform(
             lambda s: _rolling_sum_shifted(s, recent_games, min_history_games)
         )
 
-    data[f"recent_shooting_pct_{recent_games}"] = (
-        data[f"recent_goals_{recent_games}"]
-        / data[f"recent_shots_on_goal_{recent_games}"].replace(0, np.nan)
-    )
-    data[f"recent_goals_per60_{recent_games}"] = (
-        data[f"recent_goals_{recent_games}"] * 3600.0
-        / data[f"recent_toi_seconds_{recent_games}"].replace(0, np.nan)
-    )
-    data[f"recent_ixg_per60_{recent_games}"] = (
-        data[f"recent_ixg_{recent_games}"] * 3600.0
-        / data[f"recent_toi_seconds_{recent_games}"].replace(0, np.nan)
-    )
-    data[f"recent_shots_per60_{recent_games}"] = (
-        data[f"recent_shots_on_goal_{recent_games}"] * 3600.0
-        / data[f"recent_toi_seconds_{recent_games}"].replace(0, np.nan)
-    )
-    data[f"recent_pp_shot_share_{recent_games}"] = (
-        data[f"recent_pp_shots_{recent_games}"]
-        / data[f"recent_shots_on_goal_{recent_games}"].replace(0, np.nan)
-    )
-
-    # Recent average deployment is also shifted, so it is known pre-game.
+    data[f"recent_shooting_pct_{recent_games}"] = data[f"recent_goals_{recent_games}"] / data[f"recent_shots_on_goal_{recent_games}"].replace(0, np.nan)
+    data[f"recent_goals_per60_{recent_games}"] = data[f"recent_goals_{recent_games}"] * 3600.0 / data[f"recent_toi_seconds_{recent_games}"].replace(0, np.nan)
+    data[f"recent_ixg_per60_{recent_games}"] = data[f"recent_ixg_{recent_games}"] * 3600.0 / data[f"recent_toi_seconds_{recent_games}"].replace(0, np.nan)
+    data[f"recent_shots_per60_{recent_games}"] = data[f"recent_shots_on_goal_{recent_games}"] * 3600.0 / data[f"recent_toi_seconds_{recent_games}"].replace(0, np.nan)
+    data[f"recent_pp_shot_share_{recent_games}"] = data[f"recent_pp_shots_{recent_games}"] / data[f"recent_shots_on_goal_{recent_games}"].replace(0, np.nan)
     data[f"recent_toi_avg_{recent_games}"] = grouped["toi_seconds"].transform(
         lambda s: _rolling_mean_shifted(s, recent_games, min_history_games)
     )
@@ -270,25 +232,22 @@ def build_goal_scorer_dataset(
         overlap = _linemate_event_overlap(pbp)
         if not overlap.empty:
             data = data.merge(overlap, on=["game_id", "player_id"], how="left")
+            data = data.sort_values(["player_id", "game_date", "game_id"]).reset_index(drop=True)
+            grouped = data.groupby("player_id", group_keys=False)
+            # Critical anti-leakage rule: only deployment observed before this game is a feature.
+            data["top_linemate_id"] = grouped["observed_top_linemate_id"].shift(1)
+            data["top_linemate_event_share"] = grouped["observed_top_linemate_event_share"].shift(1)
             teammate_strength = data[["game_id", "player_id", f"recent_ixg_per60_{recent_games}"]].rename(
-                columns={
-                    "player_id": "top_linemate_id",
-                    f"recent_ixg_per60_{recent_games}": "top_linemate_recent_ixg_per60",
-                }
+                columns={"player_id": "top_linemate_id", f"recent_ixg_per60_{recent_games}": "top_linemate_recent_ixg_per60"}
             )
             data = data.merge(teammate_strength, on=["game_id", "top_linemate_id"], how="left")
-            data["linemate_boost_score"] = (
-                data["top_linemate_event_share"].fillna(0.0)
-                * data["top_linemate_recent_ixg_per60"].fillna(0.0)
-            )
+            data["linemate_boost_score"] = data["top_linemate_event_share"].fillna(0.0) * data["top_linemate_recent_ixg_per60"].fillna(0.0)
         else:
             data["top_linemate_id"] = np.nan
-            data["top_linemate_event_share"] = 0.0
+            data["top_linemate_event_share"] = np.nan
             data["top_linemate_recent_ixg_per60"] = np.nan
             data["linemate_boost_score"] = 0.0
 
-    # Keep rows with enough history for model fitting; users can retain all rows by
-    # setting min_history_games=1.
     history_col = f"recent_toi_seconds_{recent_games}"
     data["history_ready"] = data[history_col].notna() & (data[history_col] > 0)
     return data

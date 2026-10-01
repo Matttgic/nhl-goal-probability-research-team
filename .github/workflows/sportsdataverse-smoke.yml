@@ -1,0 +1,51 @@
+name: SportsDataverse NHL smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      season:
+        description: NHL season start year
+        required: false
+        default: "2025"
+  push:
+    branches: [main]
+    paths:
+      - .github/nhl-sportsdataverse-trigger
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - name: Install project with SportsDataverse
+        run: uv sync --extra sports
+      - name: Build real scorer feature sample
+        env:
+          SEASON: ${{ inputs.season || '2025' }}
+        run: uv run python scripts/build_goal_scorer_dataset.py --seasons "$SEASON" --recent-games 10 --min-history-games 3 --no-linemates --output workspace/nhl_goal_scorer_features.csv
+      - name: Validate output
+        run: |
+          test -s workspace/nhl_goal_scorer_features.csv
+          uv run python - <<'PY'
+          import pandas as pd
+          df = pd.read_csv('workspace/nhl_goal_scorer_features.csv')
+          required = {'label_goal','recent_ixg_10','recent_shots_per60_10','history_ready'}
+          missing = required - set(df.columns)
+          assert not missing, missing
+          assert len(df) > 1000, len(df)
+          assert df['history_ready'].sum() > 100, df['history_ready'].sum()
+          print({'rows': len(df), 'history_ready': int(df['history_ready'].sum()), 'goal_labels': int(df['label_goal'].sum())})
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: nhl-sportsdataverse-smoke
+          path: workspace/nhl_goal_scorer_features.csv
+          if-no-files-found: warn

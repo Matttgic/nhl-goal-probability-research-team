@@ -7,3 +7,6 @@ workspace/*
 !workspace/.gitkeep
 reports/*
 !reports/.gitkeep
+!reports/upcoming_predictions.md
+!reports/upcoming_predictions.csv
+!reports/upcoming_validation.json

@@ -4,6 +4,21 @@ Pregame shooting-context features and separate probability/price evaluation are
 available in the dataset pipeline. See [components and usage](docs/NHL_REPOSITORY_COMPONENTS.md)
 for the source audit, input schema, missing-data behavior and validation limits.
 
+## Upcoming games, readable on a phone
+
+Open [latest experimental forecasts](reports/upcoming_predictions.md).
+Refresh via [Actions → Upcoming NHL experimental forecasts → Run workflow](https://github.com/Matttgic/nhl-goal-probability-research-team/actions/workflows/upcoming-predictions.yml).
+This independent workflow retrieves public NHL data, trains and calibrates a goal
+model with recent shooting/venue/opponent features, evaluates a chronological
+holdout and writes the next 48 hours of regular-season forecasts. It requires no
+odds-provider key and sends no Telegram message. Read the report's generation
+time: refreshes are manual after the initial push-triggered run.
+
+Probabilities are experimental and conditional on player participation. Current
+rosters do not confirm injuries, lines or PP roles. An unavailable data source
+produces an explicit failure report instead of leaving stale forecasts displayed.
+See [forecast protocol](docs/UPCOMING_FORECASTS.md) for model and validation details.
+
 A code-first CrewAI project designed as a **real multi-agent research team**, not seven copies of the same prompt.
 
 ## What V2 fixes

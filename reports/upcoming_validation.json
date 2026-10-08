@@ -1,1 +1,51 @@
-{"status":"pending","odds_used":false,"note":"Initial real-data run has not published a result yet."}
+{
+  "reference": {
+    "brier": 0.12544910188243177,
+    "log_loss": 0.4079444528616143,
+    "mean_probability": 0.15514705747588203,
+    "observed_goal_rate": 0.15811826200588044
+  },
+  "enriched": {
+    "brier": 0.12544255302383184,
+    "log_loss": 0.407927047928223,
+    "mean_probability": 0.15542311737709708,
+    "observed_goal_rate": 0.15811826200588044
+  },
+  "history_rows": 21599,
+  "history_games": 600,
+  "training_rows": 10136,
+  "calibration_rows": 4316,
+  "test_rows": 3061,
+  "training_through": "2026-03-27",
+  "calibration_through": "2026-04-11",
+  "test_from": "2026-04-12",
+  "test_through": "2026-10-07",
+  "active_features": [
+    "is_home",
+    "position_D",
+    "shot_context_history_games",
+    "shot_context_l10_sog_avg",
+    "shot_context_l10_goal_hit_rate",
+    "shot_context_l10_toi_avg_seconds",
+    "shot_context_l10_sog_per60",
+    "shot_context_l5_sog_avg",
+    "shot_context_l5_goal_hit_rate",
+    "shot_context_l5_toi_avg_seconds",
+    "shot_context_venue_l10_games",
+    "shot_context_venue_l10_sog_avg",
+    "shot_context_venue_l10_goal_hit_rate",
+    "shot_context_matchup_l10_games",
+    "shot_context_matchup_l10_sog_avg",
+    "shot_context_matchup_l10_goal_hit_rate"
+  ],
+  "unavailable_features": [
+    "shot_context_l10_pp_observed_games",
+    "shot_context_l10_pp_usage_share",
+    "shot_context_l10_pp_toi_avg_seconds"
+  ],
+  "status": "experimental",
+  "odds_used": false,
+  "generated_at": "2026-10-08T23:00:52.130565+00:00",
+  "failed_history_games": [],
+  "forecast_games": 19
+}

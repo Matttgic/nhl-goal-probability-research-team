@@ -51,6 +51,13 @@ The displayed `Tirs/match, 10 derniers` is an observed historical average, not a
 separate forecast. The theoretical decimal price is `1 / probability`, with no
 bookmaker margin or availability assumption. ROI/CLV are not computed.
 
+The report also lists games whose scheduled start has passed on the current
+Europe/Paris calendar day, including after UTC midnight. Their NHL status and
+observed score are displayed separately, without reconstructing pregame forecasts.
+The schedule is refreshed after training and roster retrieval. Games starting
+during calculation are removed from forecasts; prediction timestamps reflect
+actual calculation completion rather than the earlier workflow start time.
+
 ## Refresh and failures
 
 The first code push starts a run. Further runs use the Actions `Run workflow`
@@ -66,7 +73,7 @@ Dependencies are pandas, NumPy and scikit-learn; it imports no CrewAI or AI prov
 Tests use labelled synthetic fixtures exclusively; passing them is a code check,
 not a backtest or a profitability result.
 
-Local verification: 23 unit tests passed, including a synthetic full training /
+Local verification: 24 unit tests passed, including Paris-day/UTC-midnight coverage and a synthetic full training /
 calibration / test / future-slate rendering exercise, leakage-invariance tests and
 strict missing-stat checks. The workflow YAML parses and `git diff --check` passes.
 Historical real-data metrics are populated only by a successful NHL-source run.

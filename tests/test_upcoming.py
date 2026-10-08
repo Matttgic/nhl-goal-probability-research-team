@@ -8,7 +8,7 @@ import pandas as pd
 
 from nhl_goal_probability_research_team.upcoming import (
     boxscore_rows, chronological_parts, feature_table, predict_upcoming,
-    render_report, schedule_games, train_forecaster,
+    render_report, schedule_games, split_slate, train_forecaster,
 )
 
 
@@ -24,6 +24,30 @@ def fixture_history():
 
 
 class UpcomingTests(unittest.TestCase):
+    def test_paris_today_keeps_one_am_games_visible_without_late_forecasts(self):
+        def game(identifier, start, state="FUT"):
+            return {"id": identifier, "startTimeUTC": start, "gameState": state,
+                    "homeTeam": {"abbrev": "AAA"}, "awayTeam": {"abbrev": "BBB"}}
+        slate = [game(1, "2026-10-08T23:00:00Z", "LIVE"),
+                 game(2, "2026-10-08T23:30:00Z"),
+                 game(3, "2026-10-08T21:00:00Z", "OFF"),
+                 game(4, "2026-10-08T22:00:00Z", "OFF"),
+                 game(5, "2026-10-08T22:30:00Z", "PRE")]
+        now = pd.Timestamp("2026-10-08T23:08:00Z")
+        upcoming, started = split_slate(slate, now)
+        self.assertEqual([g["id"] for g in upcoming], [2])
+        self.assertEqual([g["id"] for g in started], [4, 5, 1])
+        report = render_report(pd.DataFrame(), upcoming, {}, now, [], started)
+        self.assertIn("09/10 01:00", report)
+        self.assertIn("En cours", report)
+        self.assertIn("Terminé", report)
+        self.assertIn("statut à confirmer", report)
+        self.assertIn("aucune probabilité d’avant-match n’est reconstruite", report)
+        self.assertIn("Indisponible", report)
+        # The same Paris day still includes 01:00 after UTC midnight.
+        _, after_midnight = split_slate(slate, pd.Timestamp("2026-10-09T00:08:00Z"))
+        self.assertEqual([g["id"] for g in after_midnight], [4, 5, 1, 2])
+
     def test_split_keeps_entire_dates_together(self):
         table = feature_table(fixture_history())
         train, calibration, test = chronological_parts(table)

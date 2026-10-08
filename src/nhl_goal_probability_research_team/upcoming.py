@@ -68,6 +68,23 @@ def schedule_games(payload: dict) -> list[dict]:
     return out
 
 
+def split_slate(games: list[dict], now: pd.Timestamp) -> tuple[list[dict], list[dict]]:
+    """Separate future forecasts from today's elapsed start times in Paris."""
+    now = utc_timestamp(now)
+    today = now.tz_convert("Europe/Paris").date()
+    upcoming, started = [], []
+    for game in games:
+        if not game.get("startTimeUTC"):
+            continue
+        start = utc_timestamp(game["startTimeUTC"])
+        if start <= now and start.tz_convert("Europe/Paris").date() == today:
+            started.append(game)
+        elif now < start <= now + pd.Timedelta(hours=48) and game.get("gameState") not in {"OFF", "FINAL", "LIVE", "CRIT"}:
+            upcoming.append(game)
+    return (sorted(upcoming, key=lambda g: g["startTimeUTC"]),
+            sorted(started, key=lambda g: g["startTimeUTC"]))
+
+
 def collect_games(client: NHLClient, now: pd.Timestamp, max_games: int = 600) -> tuple[list[dict], list[dict]]:
     """Collect completed regular-season history and the upcoming seven-day schedule."""
     found = {}
@@ -82,10 +99,7 @@ def collect_games(client: NHLClient, now: pd.Timestamp, max_games: int = 600) ->
     history = [g for g in found.values() if g.get("gameState") in {"OFF", "FINAL"}
                and pd.Timestamp(g["game_date"]).date() < now.date()]
     history.sort(key=lambda g: (g["game_date"], g["id"]))
-    upcoming = [g for g in found.values() if g.get("startTimeUTC")
-                and now < utc_timestamp(g["startTimeUTC"]) <= now + pd.Timedelta(hours=48)
-                and g.get("gameState") not in {"OFF", "FINAL", "LIVE", "CRIT"}]
-    upcoming.sort(key=lambda g: g["startTimeUTC"])
+    upcoming, _ = split_slate(list(found.values()), now)
     return history[-max_games:], upcoming
 
 
@@ -275,7 +289,7 @@ def _safe(value):
     return str(value).replace("|", "/").replace("\n", " ").replace("<", "&lt;").replace(">", "&gt;")
 
 
-def render_report(predictions: pd.DataFrame, games: list[dict], metrics: dict, now: pd.Timestamp, warnings: list[str]) -> str:
+def render_report(predictions: pd.DataFrame, games: list[dict], metrics: dict, now: pd.Timestamp, warnings: list[str], started_games: list[dict] | None = None) -> str:
     paris = utc_timestamp(now).tz_convert("Europe/Paris").strftime("%d/%m/%Y %H:%M")
     lines = ["# Prochains matchs NHL — modèle expérimental", "", f"Actualisé le **{paris} (Paris)**. Fenêtre : prochaines 48 heures.", "",
              "Probabilités conditionnelles à la participation du joueur. Effectifs actuels ; blessures, composition, PP1 et gardiens non confirmés.",
@@ -296,6 +310,19 @@ def render_report(predictions: pd.DataFrame, games: list[dict], metrics: dict, n
     for warning in warnings:
         lines += [f"- {_safe(warning)}"]
     if warnings:
+        lines.append("")
+    if started_games:
+        lines += ["## Matchs du jour dont l’heure de début est passée", "",
+                  "Ces matchs restent visibles. Ce rapport ne disposait pas de pronostics verrouillés avant leur début : aucune probabilité d’avant-match n’est reconstruite après coup.", "",
+                  "| Match | Début prévu (Paris) | Statut NHL | Score constaté |",
+                  "|---|---|---|---|"]
+        for game in started_games:
+            kickoff = utc_timestamp(game["startTimeUTC"]).tz_convert("Europe/Paris").strftime("%d/%m %H:%M")
+            home, away = game["homeTeam"], game["awayTeam"]
+            state = game.get("gameState")
+            status = "En cours" if state in {"LIVE", "CRIT"} else "Terminé" if state in {"OFF", "FINAL"} else "Heure prévue dépassée ; statut à confirmer"
+            score = f"{away['score']}–{home['score']}" if "score" in away and "score" in home else "Indisponible"
+            lines.append(f"| {_safe(away['abbrev'])} chez {_safe(home['abbrev'])} | {kickoff} | {status} | {_safe(score)} |")
         lines.append("")
     if not games:
         lines += ["**Aucun match de saison régulière trouvé dans les prochaines 48 heures.**", ""]
@@ -328,11 +355,25 @@ def run(output: Path, cache: Path, now: pd.Timestamp, max_games: int = 600):
     candidates, warnings = roster_candidates(client, games)
     if failed:
         warnings.append(f"{len(failed)} matchs historiques non récupérés, sur {len(historical)}.")
-    predictions = predict_upcoming(history, candidates, model, now)
-    metrics["generated_at"] = utc_timestamp(now).isoformat()
+    # Calculation can cross a puck-drop or midnight. Refresh the Paris-day slate
+    # and use the actual completion time rather than backdating predictions.
+    refresh_now = pd.Timestamp.now(tz="UTC")
+    day_start = refresh_now.tz_convert("Europe/Paris").normalize().tz_convert("UTC").date()
+    slate = schedule_games(client.get(f"schedule/{day_start.isoformat()}"))
+    report_now = pd.Timestamp.now(tz="UTC")
+    games, started_games = split_slate(slate, report_now)
+    if not candidates.empty:
+        candidates = candidates[candidates.game_id.isin([g["id"] for g in games])].copy()
+    predictions = predict_upcoming(history, candidates, model, report_now)
+    report_now = pd.Timestamp.now(tz="UTC")
+    games, started_games = split_slate(slate, report_now)
+    predictions = predictions[predictions.game_id.isin([g["id"] for g in games])].copy()
+    predictions["predicted_at"] = report_now.isoformat()
+    metrics["generated_at"] = report_now.isoformat()
     metrics["failed_history_games"] = failed
     metrics["forecast_games"] = len(games)
+    metrics["elapsed_start_games_today"] = len(started_games)
     predictions.to_csv(output / "upcoming_predictions.csv", index=False)
     (output / "upcoming_validation.json").write_text(json.dumps(metrics, indent=2, ensure_ascii=False), encoding="utf-8")
-    (output / "upcoming_predictions.md").write_text(render_report(predictions, games, metrics, now, warnings), encoding="utf-8")
+    (output / "upcoming_predictions.md").write_text(render_report(predictions, games, metrics, report_now, warnings, started_games), encoding="utf-8")
     print(f"Report generated: {len(games)} games, {len(predictions)} players; no odds API used")

@@ -264,11 +264,24 @@ def roster_candidates(client: NHLClient, games: list[dict]) -> tuple[pd.DataFram
 
 
 def predict_upcoming(history: pd.DataFrame, candidates: pd.DataFrame, model: CalibratedScorer, now: pd.Timestamp) -> pd.DataFrame:
-    if candidates.empty:
-        return pd.DataFrame(columns=["game_id", "player_id", "player_name", "starts_at", "probability_goal", "status"])
-    starts = pd.to_datetime(candidates.starts_at, utc=True)
-    if (starts <= utc_timestamp(now)).any():
+    if not candidates.empty and (pd.to_datetime(candidates.starts_at, utc=True) <= utc_timestamp(now)).any():
         raise ValueError("Started games cannot enter the upcoming forecast")
+    return _score_candidates(history, candidates, model, now, "pregame")
+
+
+def predict_elapsed(history: pd.DataFrame, candidates: pd.DataFrame, model: CalibratedScorer, now: pd.Timestamp) -> pd.DataFrame:
+    """Late whole-game estimates, explicitly distinct from locked/live forecasts."""
+    if not candidates.empty:
+        if (pd.to_datetime(candidates.starts_at, utc=True) > utc_timestamp(now)).any():
+            raise ValueError("Future games cannot enter retrospective estimates")
+        cutoff = pd.to_datetime(candidates.game_date, utc=True).min().normalize()
+        history = history[pd.to_datetime(history.game_date, utc=True).lt(cutoff)].copy()
+    return _score_candidates(history, candidates, model, now, "retrospective_history_only")
+
+
+def _score_candidates(history: pd.DataFrame, candidates: pd.DataFrame, model: CalibratedScorer, now: pd.Timestamp, kind: str) -> pd.DataFrame:
+    if candidates.empty:
+        return pd.DataFrame(columns=["game_id", "player_id", "player_name", "starts_at", "probability_goal", "status", "prediction_kind"])
     features = feature_table(history, candidates)
     out = candidates.merge(features.drop(columns=["game_date", "is_home", "position_D"]),
                            on=["game_id", "player_id"], validate="one_to_one")
@@ -281,6 +294,7 @@ def predict_upcoming(history: pd.DataFrame, candidates: pd.DataFrame, model: Cal
         out.loc[ready, "probability_goal"] = model.predict(out.loc[ready])
     out["fair_decimal_odds"] = 1 / out.probability_goal.replace(0, np.nan)
     out["predicted_at"] = utc_timestamp(now).isoformat()
+    out["prediction_kind"] = kind
     out["status"] = np.where(ready, "experimental", "historique insuffisant")
     return out.sort_values(["starts_at", "probability_goal"], ascending=[True, False])
 
@@ -289,7 +303,7 @@ def _safe(value):
     return str(value).replace("|", "/").replace("\n", " ").replace("<", "&lt;").replace(">", "&gt;")
 
 
-def render_report(predictions: pd.DataFrame, games: list[dict], metrics: dict, now: pd.Timestamp, warnings: list[str], started_games: list[dict] | None = None) -> str:
+def render_report(predictions: pd.DataFrame, games: list[dict], metrics: dict, now: pd.Timestamp, warnings: list[str], started_games: list[dict] | None = None, elapsed_predictions: pd.DataFrame | None = None) -> str:
     paris = utc_timestamp(now).tz_convert("Europe/Paris").strftime("%d/%m/%Y %H:%M")
     lines = ["# Prochains matchs NHL — modèle expérimental", "", f"Actualisé le **{paris} (Paris)**. Fenêtre : prochaines 48 heures.", "",
              "Probabilités conditionnelles à la participation du joueur. Effectifs actuels ; blessures, composition, PP1 et gardiens non confirmés.",
@@ -313,7 +327,7 @@ def render_report(predictions: pd.DataFrame, games: list[dict], metrics: dict, n
         lines.append("")
     if started_games:
         lines += ["## Matchs du jour dont l’heure de début est passée", "",
-                  "Ces matchs restent visibles. Ce rapport ne disposait pas de pronostics verrouillés avant leur début : aucune probabilité d’avant-match n’est reconstruite après coup.", "",
+                  "**Buteurs : estimations calculées après le début**, uniquement avec l’historique des dates antérieures. Elles concernent l’ensemble du match, pas les buts à venir à partir de maintenant. Le score actuel et le temps restant ne sont pas utilisés ; ce ne sont pas des pronostics verrouillés avant le début.", "",
                   "| Match | Début prévu (Paris) | Statut NHL | Score constaté |",
                   "|---|---|---|---|"]
         for game in started_games:
@@ -324,6 +338,20 @@ def render_report(predictions: pd.DataFrame, games: list[dict], metrics: dict, n
             score = f"{away['score']}–{home['score']}" if "score" in away and "score" in home else "Indisponible"
             lines.append(f"| {_safe(away['abbrev'])} chez {_safe(home['abbrev'])} | {kickoff} | {status} | {_safe(score)} |")
         lines.append("")
+        if elapsed_predictions is not None and not elapsed_predictions.empty:
+            for game in started_games:
+                home, away = game["homeTeam"]["abbrev"], game["awayTeam"]["abbrev"]
+                lines += [f"### Buteurs — {_safe(away)} chez {_safe(home)}", "",
+                          "| Joueur | Équipe | But sur l’ensemble du match, estimation tardive |",
+                          "|---|---|---:|"]
+                group = elapsed_predictions[elapsed_predictions.game_id.eq(game["id"])]
+                valid = group[group.probability_goal.notna()]
+                for team in (away, home):
+                    for row in valid[valid.team_abbrev.eq(team)].head(3).to_dict("records"):
+                        lines.append(f"| {_safe(row['player_name'])} | {_safe(team)} | {row['probability_goal']:.1%} |")
+                if valid.empty:
+                    lines += ["", "Historique ou effectif indisponible : aucun nom ni pourcentage inventé."]
+                lines.append("")
     if not games:
         lines += ["**Aucun match de saison régulière trouvé dans les prochaines 48 heures.**", ""]
     for game in games:
@@ -341,7 +369,7 @@ def render_report(predictions: pd.DataFrame, games: list[dict], metrics: dict, n
         if len(group) > len(valid):
             lines += ["", f"{len(group)-len(valid)} joueurs sans historique suffisant : aucune probabilité inventée."]
         lines.append("")
-    lines += ["Tous les joueurs calculés : [CSV](upcoming_predictions.csv). Paramètres et validation : [JSON](upcoming_validation.json).", "",
+    lines += ["Tous les joueurs calculés : [CSV](upcoming_predictions.csv). La colonne `prediction_kind` distingue `pregame` et `retrospective_history_only` ; seules les lignes `pregame` sont des prévisions avant le début. Paramètres et validation : [JSON](upcoming_validation.json).", "",
               "Sources : endpoints publics NHL, matchs terminés et effectifs au moment du calcul. Le statut expérimental s’applique à toutes les lignes.", ""]
     return "\n".join(lines)
 
@@ -352,9 +380,6 @@ def run(output: Path, cache: Path, now: pd.Timestamp, max_games: int = 600):
     historical, games = collect_games(client, now, max_games)
     history, failed = load_history(client, historical)
     model, metrics = train_forecaster(history)
-    candidates, warnings = roster_candidates(client, games)
-    if failed:
-        warnings.append(f"{len(failed)} matchs historiques non récupérés, sur {len(historical)}.")
     # Calculation can cross a puck-drop or midnight. Refresh the Paris-day slate
     # and use the actual completion time rather than backdating predictions.
     refresh_now = pd.Timestamp.now(tz="UTC")
@@ -362,18 +387,29 @@ def run(output: Path, cache: Path, now: pd.Timestamp, max_games: int = 600):
     slate = schedule_games(client.get(f"schedule/{day_start.isoformat()}"))
     report_now = pd.Timestamp.now(tz="UTC")
     games, started_games = split_slate(slate, report_now)
-    if not candidates.empty:
-        candidates = candidates[candidates.game_id.isin([g["id"] for g in games])].copy()
-    predictions = predict_upcoming(history, candidates, model, report_now)
+    candidates, warnings = roster_candidates(client, games + started_games)
+    if failed:
+        warnings.append(f"{len(failed)} matchs historiques non récupérés, sur {len(historical)}.")
+    report_now = pd.Timestamp.now(tz="UTC")
+    games, started_games = split_slate(slate, report_now)
+    if candidates.empty:
+        future_candidates = elapsed_candidates = candidates
+    else:
+        future_candidates = candidates[candidates.game_id.isin([g["id"] for g in games])].copy()
+        elapsed_candidates = candidates[candidates.game_id.isin([g["id"] for g in started_games])].copy()
+    predictions = predict_upcoming(history, future_candidates, model, report_now)
+    elapsed_predictions = predict_elapsed(history, elapsed_candidates, model, report_now)
     report_now = pd.Timestamp.now(tz="UTC")
     games, started_games = split_slate(slate, report_now)
     predictions = predictions[predictions.game_id.isin([g["id"] for g in games])].copy()
     predictions["predicted_at"] = report_now.isoformat()
+    elapsed_predictions["predicted_at"] = report_now.isoformat()
     metrics["generated_at"] = report_now.isoformat()
     metrics["failed_history_games"] = failed
     metrics["forecast_games"] = len(games)
     metrics["elapsed_start_games_today"] = len(started_games)
-    predictions.to_csv(output / "upcoming_predictions.csv", index=False)
+    metrics["retrospective_player_rows"] = len(elapsed_predictions)
+    pd.concat([predictions, elapsed_predictions], ignore_index=True).to_csv(output / "upcoming_predictions.csv", index=False)
     (output / "upcoming_validation.json").write_text(json.dumps(metrics, indent=2, ensure_ascii=False), encoding="utf-8")
-    (output / "upcoming_predictions.md").write_text(render_report(predictions, games, metrics, report_now, warnings, started_games), encoding="utf-8")
+    (output / "upcoming_predictions.md").write_text(render_report(predictions, games, metrics, report_now, warnings, started_games, elapsed_predictions), encoding="utf-8")
     print(f"Report generated: {len(games)} games, {len(predictions)} players; no odds API used")

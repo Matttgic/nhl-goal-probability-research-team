@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 
 from nhl_goal_probability_research_team.upcoming import (
-    boxscore_rows, chronological_parts, feature_table, predict_upcoming,
+    boxscore_rows, chronological_parts, feature_table, predict_upcoming, predict_elapsed,
     render_report, schedule_games, split_slate, train_forecaster,
 )
 
@@ -42,11 +42,35 @@ class UpcomingTests(unittest.TestCase):
         self.assertIn("En cours", report)
         self.assertIn("Terminé", report)
         self.assertIn("statut à confirmer", report)
-        self.assertIn("aucune probabilité d’avant-match n’est reconstruite", report)
+        self.assertIn("estimations calculées après le début", report)
         self.assertIn("Indisponible", report)
         # The same Paris day still includes 01:00 after UTC midnight.
         _, after_midnight = split_slate(slate, pd.Timestamp("2026-10-09T00:08:00Z"))
         self.assertEqual([g["id"] for g in after_midnight], [4, 5, 1, 2])
+
+    def test_late_scorer_estimates_ignore_game_and_later_results(self):
+        history = fixture_history()
+        model, _ = train_forecaster(history)
+        candidates = history[history.game_id.eq(40)].copy()
+        candidates["player_name"] = "Synthetic scorer"
+        candidates["team_abbrev"] = "AAA"
+        candidates["starts_at"] = "2025-02-09T23:00:00Z"
+        now = pd.Timestamp("2025-02-09T23:17:00Z")
+        estimates = predict_elapsed(history, candidates, model, now)
+        changed = history.copy()
+        changed.loc[changed.game_id.ge(40), ["goals", "shots_on_goal", "toi_seconds"]] = 100
+        pd.testing.assert_frame_equal(estimates, predict_elapsed(changed, candidates, model, now))
+        self.assertTrue(estimates.prediction_kind.eq("retrospective_history_only").all())
+        self.assertTrue(pd.to_datetime(estimates.predicted_at, utc=True).gt(pd.to_datetime(estimates.starts_at, utc=True)).all())
+        game = {"id": 40, "startTimeUTC": "2025-02-09T23:00:00Z", "gameState": "LIVE",
+                "homeTeam": {"abbrev": "AAA"}, "awayTeam": {"abbrev": "BBB"}}
+        report = render_report(pd.DataFrame(), [], {}, now, [], [game], estimates)
+        self.assertIn("Synthetic scorer", report)
+        self.assertIn("pas les buts à venir", report)
+        with self.assertRaises(ValueError):
+            predict_upcoming(history, candidates, model, now)
+        with self.assertRaises(ValueError):
+            predict_elapsed(history, candidates, model, pd.Timestamp("2025-02-09T22:00:00Z"))
 
     def test_split_keeps_entire_dates_together(self):
         table = feature_table(fixture_history())

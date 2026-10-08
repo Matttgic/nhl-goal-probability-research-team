@@ -1,14 +1,14 @@
 {
   "reference": {
-    "brier": 0.12544910188243177,
+    "brier": 0.12544910188243175,
     "log_loss": 0.4079444528616143,
     "mean_probability": 0.15514705747588203,
     "observed_goal_rate": 0.15811826200588044
   },
   "enriched": {
     "brier": 0.12544255302383148,
-    "log_loss": 0.40792704792822204,
-    "mean_probability": 0.15542311737710338,
+    "log_loss": 0.4079270479282219,
+    "mean_probability": 0.15542311737710093,
     "observed_goal_rate": 0.15811826200588044
   },
   "history_rows": 21599,
@@ -45,8 +45,9 @@
   ],
   "status": "experimental",
   "odds_used": false,
-  "generated_at": "2026-10-08T23:14:30.556135+00:00",
+  "generated_at": "2026-10-08T23:21:15.963886+00:00",
   "failed_history_games": [],
   "forecast_games": 19,
-  "elapsed_start_games_today": 6
+  "elapsed_start_games_today": 6,
+  "retrospective_player_rows": 259
 }

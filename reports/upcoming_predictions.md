@@ -1,6 +1,6 @@
 # Prochains matchs NHL — modèle expérimental
 
-Actualisé le **09/10/2026 01:14 (Paris)**. Fenêtre : prochaines 48 heures.
+Actualisé le **09/10/2026 01:21 (Paris)**. Fenêtre : prochaines 48 heures.
 
 Probabilités conditionnelles à la participation du joueur. Effectifs actuels ; blessures, composition, PP1 et gardiens non confirmés.
 Aucune cote de bookmaker utilisée. La cote théorique ne constitue pas une recommandation de pari.
@@ -21,7 +21,7 @@ Données de temps de jeu en power play indisponibles : ces variables ne sont pas
 
 ## Matchs du jour dont l’heure de début est passée
 
-Ces matchs restent visibles. Ce rapport ne disposait pas de pronostics verrouillés avant leur début : aucune probabilité d’avant-match n’est reconstruite après coup.
+**Buteurs : estimations calculées après le début**, uniquement avec l’historique des dates antérieures. Elles concernent l’ensemble du match, pas les buts à venir à partir de maintenant. Le score actuel et le temps restant ne sont pas utilisés ; ce ne sont pas des pronostics verrouillés avant le début.
 
 | Match | Début prévu (Paris) | Statut NHL | Score constaté |
 |---|---|---|---|
@@ -29,8 +29,74 @@ Ces matchs restent visibles. Ce rapport ne disposait pas de pronostics verrouill
 | DAL chez BUF | 09/10 01:00 | En cours | 0–0 |
 | NSH chez MTL | 09/10 01:00 | En cours | 0–0 |
 | PHI chez OTT | 09/10 01:00 | En cours | 0–0 |
-| MIN chez TBL | 09/10 01:00 | En cours | 0–0 |
-| VAN chez CAR | 09/10 01:00 | En cours | 0–1 |
+| MIN chez TBL | 09/10 01:00 | En cours | 0–2 |
+| VAN chez CAR | 09/10 01:00 | En cours | 0–2 |
+
+### Buteurs — UTA chez BOS
+
+| Joueur | Équipe | But sur l’ensemble du match, estimation tardive |
+|---|---|---:|
+| Nick Schmaltz | UTA | 32.1% |
+| Dylan Guenther | UTA | 27.5% |
+| Clayton Keller | UTA | 24.8% |
+| David Pastrnak | BOS | 31.4% |
+| JJ Peterka | BOS | 24.3% |
+| Morgan Geekie | BOS | 22.8% |
+
+### Buteurs — DAL chez BUF
+
+| Joueur | Équipe | But sur l’ensemble du match, estimation tardive |
+|---|---|---:|
+| Jason Robertson | DAL | 36.5% |
+| Wyatt Johnston | DAL | 36.2% |
+| Mikko Rantanen | DAL | 31.0% |
+| Tage Thompson | BUF | 34.2% |
+| Jack Quinn | BUF | 28.3% |
+| Zach Benson | BUF | 21.8% |
+
+### Buteurs — NSH chez MTL
+
+| Joueur | Équipe | But sur l’ensemble du match, estimation tardive |
+|---|---|---:|
+| Steven Stamkos | NSH | 32.5% |
+| Filip Forsberg | NSH | 29.8% |
+| Ryan O'Reilly | NSH | 28.2% |
+| Cole Caufield | MTL | 36.8% |
+| Juraj Slafkovský | MTL | 28.5% |
+| Nick Suzuki | MTL | 28.0% |
+
+### Buteurs — PHI chez OTT
+
+| Joueur | Équipe | But sur l’ensemble du match, estimation tardive |
+|---|---|---:|
+| Tyson Foerster | PHI | 29.1% |
+| Porter Martone | PHI | 20.5% |
+| Owen Tippett | PHI | 19.9% |
+| Dylan Cozens | OTT | 28.9% |
+| Tim Stützle | OTT | 28.6% |
+| William Eklund | OTT | 26.7% |
+
+### Buteurs — MIN chez TBL
+
+| Joueur | Équipe | But sur l’ensemble du match, estimation tardive |
+|---|---|---:|
+| Matt Boldy | MIN | 46.5% |
+| Kirill Kaprizov | MIN | 39.4% |
+| Joel Eriksson Ek | MIN | 25.1% |
+| Brandon Hagel | TBL | 44.7% |
+| Jake Guentzel | TBL | 31.5% |
+| Nikita Kucherov | TBL | 30.2% |
+
+### Buteurs — VAN chez CAR
+
+| Joueur | Équipe | But sur l’ensemble du match, estimation tardive |
+|---|---|---:|
+| Jake DeBrusk | VAN | 28.5% |
+| Elias Pettersson | VAN | 21.9% |
+| Brock Boeser | VAN | 21.5% |
+| Sebastian Aho | CAR | 31.7% |
+| Andrei Svechnikov | CAR | 31.1% |
+| Logan Stankoven | CAR | 26.3% |
 
 ## CHI chez NYI — 09/10 01:30 (Paris)
 
@@ -355,6 +421,6 @@ Ces matchs restent visibles. Ce rapport ne disposait pas de pronostics verrouill
 
 4 joueurs sans historique suffisant : aucune probabilité inventée.
 
-Tous les joueurs calculés : [CSV](upcoming_predictions.csv). Paramètres et validation : [JSON](upcoming_validation.json).
+Tous les joueurs calculés : [CSV](upcoming_predictions.csv). La colonne `prediction_kind` distingue `pregame` et `retrospective_history_only` ; seules les lignes `pregame` sont des prévisions avant le début. Paramètres et validation : [JSON](upcoming_validation.json).
 
 Sources : endpoints publics NHL, matchs terminés et effectifs au moment du calcul. Le statut expérimental s’applique à toutes les lignes.

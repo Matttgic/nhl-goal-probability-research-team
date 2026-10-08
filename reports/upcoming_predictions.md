@@ -1,6 +1,6 @@
 # Prochains matchs NHL — modèle expérimental
 
-Actualisé le **09/10/2026 01:00 (Paris)**. Fenêtre : prochaines 48 heures.
+Actualisé le **09/10/2026 01:14 (Paris)**. Fenêtre : prochaines 48 heures.
 
 Probabilités conditionnelles à la participation du joueur. Effectifs actuels ; blessures, composition, PP1 et gardiens non confirmés.
 Aucune cote de bookmaker utilisée. La cote théorique ne constitue pas une recommandation de pari.
@@ -18,6 +18,19 @@ Fréquence de but observée : 15.8% ; probabilité moyenne enrichie : 15.5%.
 Ce test ne prouve pas la rentabilité. Les joueurs-matchs d’un même match sont corrélés.
 
 Données de temps de jeu en power play indisponibles : ces variables ne sont pas utilisées.
+
+## Matchs du jour dont l’heure de début est passée
+
+Ces matchs restent visibles. Ce rapport ne disposait pas de pronostics verrouillés avant leur début : aucune probabilité d’avant-match n’est reconstruite après coup.
+
+| Match | Début prévu (Paris) | Statut NHL | Score constaté |
+|---|---|---|---|
+| UTA chez BOS | 09/10 01:00 | En cours | 0–0 |
+| DAL chez BUF | 09/10 01:00 | En cours | 0–0 |
+| NSH chez MTL | 09/10 01:00 | En cours | 0–0 |
+| PHI chez OTT | 09/10 01:00 | En cours | 0–0 |
+| MIN chez TBL | 09/10 01:00 | En cours | 0–0 |
+| VAN chez CAR | 09/10 01:00 | En cours | 0–1 |
 
 ## CHI chez NYI — 09/10 01:30 (Paris)
 

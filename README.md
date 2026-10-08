@@ -1,5 +1,9 @@
 # NHL Goal Probability Research Team — V2
 
+Pregame shooting-context features and separate probability/price evaluation are
+available in the dataset pipeline. See [components and usage](docs/NHL_REPOSITORY_COMPONENTS.md)
+for the source audit, input schema, missing-data behavior and validation limits.
+
 A code-first CrewAI project designed as a **real multi-agent research team**, not seven copies of the same prompt.
 
 ## What V2 fixes

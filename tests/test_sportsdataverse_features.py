@@ -6,6 +6,15 @@ from nhl_goal_probability_research_team.data import build_goal_scorer_dataset
 
 
 class GoalScorerFeatureTests(unittest.TestCase):
+    def test_missing_outcomes_and_shots_are_not_fabricated(self):
+        box = pd.DataFrame({"game_id": [1], "player_id": [10], "game_date": ["2026-01-01"]})
+        with self.assertRaises(ValueError):
+            build_goal_scorer_dataset(pd.DataFrame(), box)
+        box["goals"] = 0
+        box["shots_on_goal"] = float("nan")
+        with self.assertRaises(ValueError):
+            build_goal_scorer_dataset(pd.DataFrame(), box)
+
     def test_rolling_features_are_pregame_only(self):
         box = pd.DataFrame(
             {

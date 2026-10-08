@@ -6,6 +6,8 @@ from typing import Iterable
 import numpy as np
 import pandas as pd
 
+from .shot_context import build_shot_context_features
+
 SHOT_EVENTS = {"SHOT", "GOAL", "MISSED_SHOT", "MISSED SHOT"}
 
 
@@ -177,16 +179,21 @@ def build_goal_scorer_dataset(
     recent_games: int = 10,
     min_history_games: int = 3,
     include_linemates: bool = True,
+    include_shot_context: bool = True,
 ) -> pd.DataFrame:
     """Build one leakage-safe row per skater-game for pregame goal-scorer modelling."""
     if recent_games < 2:
         raise ValueError("recent_games must be >= 2")
 
     box = player_box.copy()
-    required = {"game_id", "player_id", "game_date"}
+    required = {"game_id", "player_id", "game_date", "goals", "shots_on_goal"}
     missing = required - set(box.columns)
     if missing:
         raise ValueError(f"player_box is missing required columns: {sorted(missing)}")
+    for stat in ("goals", "shots_on_goal"):
+        values = pd.to_numeric(box[stat], errors="raise")
+        if values.isna().any() or not np.isfinite(values).all() or (values < 0).any() or (values % 1 != 0).any():
+            raise ValueError(f"{stat} must contain observed nonnegative integer counts")
     if "position" in box.columns:
         box = box[box["position"].astype(str).str.upper().ne("G")].copy()
 
@@ -250,4 +257,7 @@ def build_goal_scorer_dataset(
 
     history_col = f"recent_toi_seconds_{recent_games}"
     data["history_ready"] = data[history_col].notna() & (data[history_col] > 0)
+    if include_shot_context:
+        context = build_shot_context_features(data)
+        data = data.merge(context, on=["game_id", "player_id"], how="left", validate="one_to_one")
     return data
